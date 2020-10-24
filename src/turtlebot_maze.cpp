@@ -55,9 +55,10 @@ void TurtleBotMaze::follow_wall(){
     move_cmd.linear.x = 0.2;
     while(ros::ok()) {
         move_cmd.angular.z = k_*heading_error_; //simple P-controller
-        ROS_INFO("Ang cmd: %f", move_cmd.angular.z);
+        //ROS_INFO("Ang cmd: %f", move_cmd.angular.z);
         vel_publisher_.publish(move_cmd);
         ros::spinOnce();
+        update_walls();
         loop_rate_->sleep();
         if(center_range_ < 0.5){ //too close to wall in front
             stop();
@@ -88,7 +89,7 @@ void TurtleBotMaze::rotate_angle(float angle_in) {
         vel_publisher_.publish(move_cmd);
         loop_rate_->sleep();
         angle_current += move_cmd.angular.z*0.1;
-        ROS_INFO("Rotating: %f", angle_current);
+        //ROS_INFO("Rotating: %f", angle_current);
     }
 }
 
@@ -100,50 +101,139 @@ void TurtleBotMaze::callback_laser(const sensor_msgs::LaserScan &msg) {
     float actual_ratio = left_range_ / lf_range;
     heading_error_ = desired_ratio_ - actual_ratio; //not actually an angle
     center_range_ = msg.ranges[center_laser_idx_];
-    ROS_INFO("Heading error: %f", heading_error_);
+    //ROS_INFO("Heading error: %f", heading_error_);
     current_scan_ = msg;
 }
-/*
-void TurtleBotMaze::update_walls(){
-    //simple split of left and right sides for now
-    std::array<float,180> ranges;
-    std::array<float,180> bearings;
-    const float eps = 0.1;
-    const size_t count_thresh = 30;
 
+void TurtleBotMaze::update_walls(){
+    if(current_scan_.header.seq == 0)
+        return;
+    const float eps = 0.1;
+    const size_t count_thresh = 10;
+    right_walls_.clear();
+    left_walls_.clear();
+
+    //simple split of left and right sides for now
     float rhoi = current_scan_.ranges[0];
     float thetai = 0; //angle from where?
     float a_num1 = rhoi*rhoi*sin(2*thetai);
     float a_den1 = rhoi*rhoi*cos(2*thetai);
     float a_num2 = 0, a_den2 = 0;
     size_t counter = 1;
-    for(size_t i = 1; i < 180; ++i){
-        //dont forget to check discrepancy
+    // TODO dont use ranges that are within say 95% of max
+    for(size_t i = 1; i < center_laser_idx_; ++i){
         rhoi = current_scan_.ranges[i];
-        if(std::abs(rhoi - current_scan_.ranges[i]) < eps){
-            thetai = current_scan_.angle_increment*i; //angle from where?
+        thetai = current_scan_.angle_increment*i; //angle from where?
+        if(std::abs(rhoi - current_scan_.ranges[i-1]) < eps){
             a_num1 += rhoi*rhoi*sin(2*thetai);
             a_den1 += rhoi*rhoi*cos(2*thetai);
-            for(size_t j = 0; j < i; ++j){
-                float rhoj = current_scan_.ranges[j];
-                float thetaj = current_scan_.angle_increment*j;
-                a_num2 += rhoi*rhoj*cos(thetai)*sin(thetaj);
-                a_den2 += rhoi*rhoj*cos(thetai + thetaj);
-            }
             ++counter;
+        }else{ // new wall group
+            if(counter >= count_thresh){
+                //compute parameters of current wall and store
+                for(size_t j = i - counter; j < i; ++j){
+                    float rhoj = current_scan_.ranges[j];
+                    float thetaj = current_scan_.angle_increment*j;
+                    for(size_t k = i - counter; k < i; ++k){
+                        float rhok = current_scan_.ranges[k];
+                        float thetak = current_scan_.angle_increment*k;
+                        a_num2 += rhoj*rhok*cos(thetaj)*sin(thetak);
+                        a_den2 += rhoj*rhok*cos(thetaj + thetak);
+                    }
+                }
+                float a = 0.5*atan((a_num1 - (2.0/counter)*a_num2)/(a_den1 - (1.0/counter)*a_den2));
+                float r = 0;
+                for(size_t k = i - counter; k < i; ++k){
+                    r += current_scan_.ranges[k]*cos(current_scan_.angle_increment*k - a);
+                }
+                r /= counter;
+                right_walls_.push_back({r,a});
+                //ROS_INFO("Wall: %f, %f", r, a);
+            }
+            //reset the accumulators
+            a_num1 = rhoi*rhoi*sin(2*thetai);
+            a_den1 = rhoi*rhoi*cos(2*thetai);
+            a_num2 = 0, a_den2 = 0;
+            counter = 1;
+        }//TODO collect last wall segment
+    }
+    if(counter >= count_thresh){
+        //compute parameters of current wall and store
+        for(size_t j = center_laser_idx_ - counter; j < center_laser_idx_; ++j){
+            float rhoj = current_scan_.ranges[j];
+            float thetaj = current_scan_.angle_increment*j;
+            for(size_t k = center_laser_idx_ - counter; k < center_laser_idx_; ++k){
+                float rhok = current_scan_.ranges[k];
+                float thetak = current_scan_.angle_increment*k;
+                a_num2 += rhoj*rhok*cos(thetaj)*sin(thetak);
+                a_den2 += rhoj*rhok*cos(thetaj + thetak);
+            }
         }
-
+        float a = 0.5*atan((a_num1 - (2.0/counter)*a_num2)/(a_den1 - (1.0/counter)*a_den2));
+        a += M_PI_2; //TODO: how to get front wall the right orientation?
+        float r = 0;
+        for(size_t k = center_laser_idx_ - counter; k < center_laser_idx_; ++k){
+            r += current_scan_.ranges[k]*cos(current_scan_.angle_increment*k - a);
+        }
+        r /= counter;
+        right_walls_.push_back({r,a});
+        //ROS_INFO("Wall: %f, %f", r, a);
     }
 
     //loop through left side points
-    //if range - previous range > threshold, split into new group
-    // dont use ranges that are within say 95% of max
-    //compute fit parameters on current group and store
+    rhoi = current_scan_.ranges[left_laser_idx_];
+    thetai = 0; //angle from where?
+    a_num1 = rhoi*rhoi*sin(2*thetai);
+    a_den1 = rhoi*rhoi*cos(2*thetai);
+    a_num2 = 0, a_den2 = 0;
+    counter = 1;
+    // TODO dont use ranges that are within say 95% of max
+    for(size_t i = left_laser_idx_-1; i >= center_laser_idx_; --i){
+        rhoi = current_scan_.ranges[i];
+        thetai = current_scan_.angle_increment*(left_laser_idx_ - i); //angle from where?
+        if(std::abs(rhoi - current_scan_.ranges[i+1]) < eps){
+            a_num1 += rhoi*rhoi*sin(2*thetai);
+            a_den1 += rhoi*rhoi*cos(2*thetai);
+            ++counter;
+        }else{ // new wall group
+            if(counter >= count_thresh){
+                //compute parameters of current wall and store
+                for(size_t j = i+1; j <= i + counter; ++j){
+                    float rhoj = current_scan_.ranges[j];
+                    float thetaj = current_scan_.angle_increment*(left_laser_idx_ - j);
+                    for(size_t k = i+1; k <= i + counter; ++k){
+                        float rhok = current_scan_.ranges[k];
+                        float thetak = current_scan_.angle_increment*(left_laser_idx_ - k);
+                        a_num2 += rhoj*rhok*cos(thetaj)*sin(thetak);
+                        a_den2 += rhoj*rhok*cos(thetaj + thetak);
+                    }
+                }
+                float a = 0.5*atan((a_num1 - (2.0/counter)*a_num2)/(a_den1 - (1.0/counter)*a_den2));
+                float r = 0;
+                for(size_t k = i+1; k <= i + counter; ++k){
+                    r += current_scan_.ranges[k]*cos(current_scan_.angle_increment*(left_laser_idx_ - k) - a);
+                }
+                r /= counter;
+                left_walls_.push_back({r,a});
+                //ROS_INFO("Wall: %f, %f", r, a);
+            }
+            //reset the accumulators
+            a_num1 = rhoi*rhoi*sin(2*thetai);
+            a_den1 = rhoi*rhoi*cos(2*thetai);
+            a_num2 = 0, a_den2 = 0;
+            counter = 1;
+        }
+    }
+    int cc = 0;
+    for(const auto& v : right_walls_){
+        ROS_INFO("RW: %f %f %d",v[0],v[1],++cc);
+    }
+    cc = 0;
+    for(const auto& v : left_walls_)
+        ROS_INFO("LW: %f %f %d",v[0],v[1],++cc);
 
-    //store wall parameters as nx2, where n is number of walls
-    //r and a, where r is min dist of wall to laser, a is its bearing
 
-}*/
+}
 
 void mySigintHandler(int sig)
 {
