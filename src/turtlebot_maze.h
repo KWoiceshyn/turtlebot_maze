@@ -21,7 +21,7 @@ public:
 
 private:
     void update_walls();
-    void update_scan_section(const size_t start_idx, std::vector<std::array<float,2>>& walls);
+    void update_scan_section(const size_t start_idx, const float angle_offset, std::vector<std::array<float,2>>& walls);
 
     const size_t right_laser_idx_ = 0;
     const size_t center_start_laser_idx_= 120;

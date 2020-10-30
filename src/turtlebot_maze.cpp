@@ -110,9 +110,9 @@ void TurtleBotMaze::update_walls(){
         return;
 
     //simple split of left right and center for now
-    update_scan_section(right_laser_idx_,right_walls_);
-    update_scan_section(center_start_laser_idx_,center_walls_);
-    update_scan_section(center_end_laser_idx_,left_walls_);
+    update_scan_section(right_laser_idx_,0,right_walls_);
+    update_scan_section(center_start_laser_idx_,M_PI/6,center_walls_);
+    update_scan_section(center_end_laser_idx_,M_PI/3,left_walls_);
 
     int cc = 0;
     for(const auto& v : right_walls_){
@@ -128,7 +128,7 @@ void TurtleBotMaze::update_walls(){
     std::cout<<"-----------------------------------\n";
 }
 
-void TurtleBotMaze::update_scan_section(const size_t start_idx, std::vector<std::array<float,2>>& walls){
+void TurtleBotMaze::update_scan_section(const size_t start_idx, const float angle_offset, std::vector<std::array<float,2>>& walls){
     const float eps = 0.05; //tolerance for new wall group; assumes planar walls for now
     const size_t count_thresh = 30; //min sequential scans to create a wall model
     const size_t pts_to_fit = 5; //number of evenly spaced scan points to fit into wall model
@@ -151,12 +151,12 @@ void TurtleBotMaze::update_scan_section(const size_t start_idx, std::vector<std:
                     --increment;
                 for(size_t j = i - counter; j < i; j += increment){
                     float rhoj = current_scan_.ranges[j];
-                    float thetaj = current_scan_.angle_increment*(j - start_idx); //positive RH angle from section start
+                    float thetaj = current_scan_.angle_increment*(j - start_idx) - angle_offset; //positive RH angle from section start
                     a_num1 += rhoj*rhoj*sin(2*thetaj);
                     a_den1 += rhoj*rhoj*cos(2*thetaj);
                     for(size_t k = i - counter; k < i; k += increment){
                         float rhok = current_scan_.ranges[k];
-                        float thetak = current_scan_.angle_increment*(k - start_idx);
+                        float thetak = current_scan_.angle_increment*(k - start_idx) - angle_offset;
                         a_num2 += rhoj*rhok*cos(thetaj)*sin(thetak);
                         a_den2 += rhoj*rhok*cos(thetaj + thetak);
                     }
@@ -164,10 +164,10 @@ void TurtleBotMaze::update_scan_section(const size_t start_idx, std::vector<std:
                 float a = 0.5*atan((a_num1 - (2.0/pts_to_fit)*a_num2)/(a_den1 - (1.0/pts_to_fit)*a_den2));
                 float r = 0;
                 for(size_t k = i - counter; k < i; k += increment){
-                    r += current_scan_.ranges[k]*cos(current_scan_.angle_increment*(k - start_idx) - a);
+                    r += current_scan_.ranges[k]*cos(current_scan_.angle_increment*(k - start_idx) - angle_offset - a);
                 }
                 r /= pts_to_fit;
-                a = a + start_idx*current_scan_.angle_increment; //least squares has trouble near pi
+                a += 3*angle_offset; //least squares has trouble near or beyond +- pi
                 walls.push_back({r,a});
             }
             //reset the accumulators
