@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 project(turtlebot_maze)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
@@ -9,11 +9,13 @@ project(turtlebot_maze)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  rospy
-  std_msgs
-  geometry_msgs
-)
+        roscpp
+        rospy
+        std_msgs
+        geometry_msgs
+        nav_msgs
+        tf
+        )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -127,7 +129,22 @@ include_directories(
 #   src/${PROJECT_NAME}/turtlebot_maze.cpp
 # )
 
-add_executable(turtlebot_maze src/pid.h src/turtlebot_maze.cpp)
+set(HEADERS
+        "include/turtlebot_maze/turtlebot_maze.h"
+        "include/turtlebot_maze/geometric_utilities.h"
+        "include/turtlebot_maze/position_history.h"
+        "include/turtlebot_maze/wall_detection.h"
+        )
+
+set(SOURCES
+        "src/turtlebot_maze.cpp"
+        "src/position_history.cpp"
+        "src/wall_detection.cpp"
+        "src/geometric_utilities.cpp"
+        "src/main.cpp"
+        )
+
+add_executable(turtlebot_maze ${SOURCES} ${HEADERS})
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries

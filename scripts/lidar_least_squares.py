@@ -88,25 +88,39 @@ def hough_lines(r_arr, t_arr):
         for i in range(idx - 1, -1, -1):
             error = np.abs(r_arr[i] * np.cos(t_arr[i] - a_rad) - line.r)
             if error > max_deviation:
+                new_error = r_arr[i + 1] * np.cos(t_arr[i + 1] - a_rad) - line.r # force endpoint to be on model
+                print('Error ' + str(new_error) + ' r ' + str(line.r) + ' a ' + str(line.a))
                 line.p0[0] = r_arr[i + 1] * np.cos(t_arr[i + 1])
                 line.p0[1] = r_arr[i + 1] * np.sin(t_arr[i + 1])
+                print('p0b ' + str(line.p0[0]) + ',' + str(line.p0[1]))
+                line.p0[0] -= new_error * np.cos(a_rad)
+                line.p0[1] -= new_error * np.sin(a_rad)
+                print('p0 ' + str(line.p0[0]) + ',' + str(line.p0[1]))
                 flag = True
                 break
         if not flag:
-            line.p0[0] = r_arr[0] * np.cos(t_arr[0])
-            line.p0[1] = r_arr[0] * np.sin(t_arr[0])
+            new_error = r_arr[0] * np.cos(t_arr[0] - a_rad) - line.r  # force endpoint to be on model
+            line.p0[0] = r_arr[0] * np.cos(t_arr[0]) - new_error * np.cos(a_rad)
+            line.p0[1] = r_arr[0] * np.sin(t_arr[0]) - new_error * np.sin(a_rad)
         # walk up the scan
         flag = False
         for i in range(idx + 1, len(t_arr), 1):
             error = np.abs(r_arr[i] * np.cos(t_arr[i] - a_rad) - line.r)
             if error > max_deviation:
+                new_error = r_arr[i - 1] * np.cos(t_arr[i - 1] - a_rad) - line.r  # force endpoint to be on model
+                print('Error ' + str(new_error) + ' r ' + str(line.r) + ' a ' + str(line.a))
                 line.p1[0] = r_arr[i - 1] * np.cos(t_arr[i - 1])
                 line.p1[1] = r_arr[i - 1] * np.sin(t_arr[i - 1])
+                print('p1b ' + str(line.p1[0]) + ',' + str(line.p1[1]))
+                line.p1[0] -= new_error * np.cos(a_rad)
+                line.p1[1] -= new_error * np.sin(a_rad)
+                print('p1 ' + str(line.p1[0]) + ',' + str(line.p1[1]))
                 flag = True
                 break
         if not flag:
-            line.p1[0] = r_arr[-1] * np.cos(t_arr[-1])
-            line.p1[1] = r_arr[-1] * np.sin(t_arr[-1])
+            new_error = r_arr[-1] * np.cos(t_arr[-1] - a_rad) - line.r  # force endpoint to be on model
+            line.p1[0] = r_arr[-1] * np.cos(t_arr[-1]) - new_error * np.cos(a_rad)
+            line.p1[1] = r_arr[-1] * np.sin(t_arr[-1]) - new_error * np.sin(a_rad)
     return h_array, line_list
 
 '''
@@ -135,9 +149,13 @@ H, lines = hough_lines(rh, th)
 
 plt.figure(1)
 plt.scatter(xy[0], xy[1])
+
+colors = ['red', 'green', 'blue']
+i = 0
 for line in lines:
-    plt.scatter(line.p0[0], line.p0[1], c='red', marker='X')
-    plt.scatter(line.p1[0], line.p1[1], c='red', marker='X')
+    plt.scatter(line.p0[0], line.p0[1], c=colors[i], marker='X')
+    plt.scatter(line.p1[0], line.p1[1], c=colors[i], marker='X')
+    i+=1
 
 plt.axis('equal')
 plt.show()
