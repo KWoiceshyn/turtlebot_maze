@@ -6,6 +6,12 @@
 namespace turtlebot_maze {
 
     struct Point{
+
+        Point(double xx = 0.0, double yy = 0.0){
+            x = xx;
+            y = yy;
+        }
+
         double x;
         double y;
     };

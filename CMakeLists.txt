@@ -134,6 +134,7 @@ set(HEADERS
         "include/turtlebot_maze/geometric_utilities.h"
         "include/turtlebot_maze/position_history.h"
         "include/turtlebot_maze/wall_detection.h"
+        "include/turtlebot_maze/pid.h"
         )
 
 set(SOURCES
