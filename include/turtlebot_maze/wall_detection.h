@@ -40,6 +40,7 @@ namespace turtlebot_maze{
 
         const double max_deviation_; // deviation from line model that signifies an endpoint
         const double max_range_diff_; // difference threshold between 2 adjacent ranges that indicates break in wall model
+        const double max_range_; // max range for reliable wall endpoint detection
         const double theta_inc_; // angle resolution in radians
         const int grid_size_; // size of square accumulator matrix
         const double r_inc_; // range (distance) resolution in meters
