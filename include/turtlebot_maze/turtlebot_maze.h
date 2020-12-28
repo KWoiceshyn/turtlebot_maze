@@ -13,12 +13,15 @@
 #include <tf/transform_datatypes.h>
 
 #include <vector>
+#include <fstream>
 
 namespace turtlebot_maze {
 
     class TurtleBotMaze {
     public:
-        TurtleBotMaze(ros::NodeHandle &nh);
+        explicit TurtleBotMaze(ros::NodeHandle &nh);
+
+        ~TurtleBotMaze();
 
         void init();
 
@@ -53,6 +56,8 @@ namespace turtlebot_maze {
 
         Pose current_pose_;
 
+        std::ofstream wall_detect_record_;
+
         //std::vector<WallModel> right_walls_;
         //std::vector<WallModel> center_walls_;
         //std::vector<WallModel> left_walls_;
@@ -67,6 +72,7 @@ namespace turtlebot_maze {
 
         ros::ServiceClient teleporter_;
         sensor_msgs::LaserScan current_scan_;
+        nav_msgs::Odometry current_odom_;
     };
 
 } // turtlebot_maze

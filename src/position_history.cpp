@@ -13,7 +13,7 @@ namespace turtlebot_maze{
         auto it_right = visited_.upper_bound(right);
 
         while(it_left != it_right && it_left != visited_.end()){
-            
+
             if(it_left->second.y > lower && it_left->second.y < upper)
                 return true;
             ++it_left;

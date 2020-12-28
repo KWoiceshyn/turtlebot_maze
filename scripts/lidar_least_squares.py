@@ -46,25 +46,26 @@ def cartesian_params(x_arr, y_arr):
 
 
 def hough_lines(r_arr, t_arr):
-    x_arr = np.array(r_arr * np.cos(t_arr))
-    y_arr = np.array(r_arr * np.sin(t_arr))
+    x_arr = np.array(r_arr * np.cos(t_arr - np.pi/2))
+    y_arr = np.array(r_arr * np.sin(t_arr - np.pi/2))
     theta_inc = 2
-    r_max = 4.0  # max expected scan range
-    detect_thresh = 40
-    grid_size = int(180 / theta_inc)
-    r_inc = r_max / grid_size
+    r_max = 10.0  # max expected scan range
+    detect_thresh = 80
+    grid_size = int(360 / theta_inc)
+    r_inc = 2 * r_max / grid_size
     h_array = np.zeros((grid_size, grid_size))
+    half_grid = int(grid_size/2)
     for xi, yi in zip(x_arr, y_arr):
-        for theta in range(0, 180, theta_inc):
-            r = np.abs(xi * np.cos(np.radians(theta)) + yi * np.sin(np.radians(theta)))
-            theta_idx = int(theta / theta_inc)
+        for j in range(-half_grid, half_grid, 1):
+            r = xi * np.cos(np.radians(theta_inc*j)) + yi * np.sin(np.radians(theta_inc*j))
             r_idx = int(r / r_inc)
-            h_array[theta_idx, r_idx] += 1
+            h_array[j+half_grid, r_idx+half_grid] += 1
 
     # loop through accumulator and find peaks
     line_list = []
     m = h_array.shape[0] - 1
     n = h_array.shape[1] - 1
+    count = 0
     for i in range(0, m + 1):
         for j in range(0, n + 1):
             if (h_array[i, j] >= detect_thresh and
@@ -75,42 +76,45 @@ def hough_lines(r_arr, t_arr):
                     h_array[i, j] >= h_array[max(i - 1, 0), max(j - 1, 0)] and
                     h_array[i, j] >= h_array[max(i - 1, 0), min(j + 1, n)] and
                     h_array[i, j] >= h_array[min(i + 1, m), max(j - 1, 0)] and
-                    h_array[i, j] >= h_array[min(i + 1, m), min(j + 1, n)]):
-                line_list.append(LineParams(i * theta_inc, j * r_inc))
+                    h_array[i, j] >= h_array[min(i + 1, m), min(j + 1, n)] and
+                    j >= half_grid): # only want positive range values
+                if count < 2:
+                    line_list.append(LineParams((i-half_grid) * theta_inc, (j-half_grid) * r_inc))
+                    if count == 1 and np.abs(line_list[1].a + 90) < np.abs(line_list[0].a + 90):
+                        tmp = line_list[1]
+                        line_list[1] = line_list[0]
+                        line_list[0] = tmp
+                    count += 1
+                else:
+                    if np.abs((i-half_grid)*theta_inc + 90) < np.abs(line_list[0].a + 90):
+                        line_list[0].a = (i-half_grid)*theta_inc
+                        line_list[0].r = (j-half_grid)*r_inc
+                    if np.abs((i - half_grid) * theta_inc - 90) < np.abs(line_list[1].a - 90):
+                        line_list[1].a = (i - half_grid) * theta_inc
+                        line_list[1].r = (j - half_grid) * r_inc
+
 
     # walk along found lines and find end points
     max_deviation = 0.12
+    count = 0
     for line in line_list:
-        a_rad = np.radians(line.a)
+        a_rad = np.radians(line.a + 90)
         idx = (np.abs(t_arr - a_rad)).argmin()
-        # walk down the scan
+        print('idx ' + str(idx))
+        if count == 0:
+            end_idx = len(t_arr) # walk up scan for first wall
+            incr = 1
+        else:
+            end_idx = -1 # walk down scan for second wall
+            incr = -1
         flag = False
-        for i in range(idx - 1, -1, -1):
+        for i in range(idx+incr, end_idx, incr):
             error = np.abs(r_arr[i] * np.cos(t_arr[i] - a_rad) - line.r)
-            if error > max_deviation:
-                new_error = r_arr[i + 1] * np.cos(t_arr[i + 1] - a_rad) - line.r # force endpoint to be on model
+            if error > max_deviation or np.abs(r_arr[i] - r_arr[i-incr]) > 0.3:
+                new_error = r_arr[i-incr] * np.cos(t_arr[i-incr] - a_rad) - line.r # force endpoint to be on model
                 print('Error ' + str(new_error) + ' r ' + str(line.r) + ' a ' + str(line.a))
-                line.p0[0] = r_arr[i + 1] * np.cos(t_arr[i + 1])
-                line.p0[1] = r_arr[i + 1] * np.sin(t_arr[i + 1])
-                print('p0b ' + str(line.p0[0]) + ',' + str(line.p0[1]))
-                line.p0[0] -= new_error * np.cos(a_rad)
-                line.p0[1] -= new_error * np.sin(a_rad)
-                print('p0 ' + str(line.p0[0]) + ',' + str(line.p0[1]))
-                flag = True
-                break
-        if not flag:
-            new_error = r_arr[0] * np.cos(t_arr[0] - a_rad) - line.r  # force endpoint to be on model
-            line.p0[0] = r_arr[0] * np.cos(t_arr[0]) - new_error * np.cos(a_rad)
-            line.p0[1] = r_arr[0] * np.sin(t_arr[0]) - new_error * np.sin(a_rad)
-        # walk up the scan
-        flag = False
-        for i in range(idx + 1, len(t_arr), 1):
-            error = np.abs(r_arr[i] * np.cos(t_arr[i] - a_rad) - line.r)
-            if error > max_deviation:
-                new_error = r_arr[i - 1] * np.cos(t_arr[i - 1] - a_rad) - line.r  # force endpoint to be on model
-                print('Error ' + str(new_error) + ' r ' + str(line.r) + ' a ' + str(line.a))
-                line.p1[0] = r_arr[i - 1] * np.cos(t_arr[i - 1])
-                line.p1[1] = r_arr[i - 1] * np.sin(t_arr[i - 1])
+                line.p1[0] = r_arr[i-incr] * np.cos(t_arr[i-incr] - np.pi/2)
+                line.p1[1] = r_arr[i-incr] * np.sin(t_arr[i-incr] - np.pi/2)
                 print('p1b ' + str(line.p1[0]) + ',' + str(line.p1[1]))
                 line.p1[0] -= new_error * np.cos(a_rad)
                 line.p1[1] -= new_error * np.sin(a_rad)
@@ -118,9 +122,10 @@ def hough_lines(r_arr, t_arr):
                 flag = True
                 break
         if not flag:
-            new_error = r_arr[-1] * np.cos(t_arr[-1] - a_rad) - line.r  # force endpoint to be on model
-            line.p1[0] = r_arr[-1] * np.cos(t_arr[-1]) - new_error * np.cos(a_rad)
-            line.p1[1] = r_arr[-1] * np.sin(t_arr[-1]) - new_error * np.sin(a_rad)
+            new_error = r_arr[end_idx-incr] * np.cos(t_arr[end_idx-incr] - a_rad) - line.r  # force endpoint to be on model
+            line.p1[0] = r_arr[end_idx-incr] * np.cos(t_arr[end_idx-incr]- np.pi/2) - new_error * np.cos(a_rad)
+            line.p1[1] = r_arr[end_idx-incr] * np.sin(t_arr[end_idx-incr]- np.pi/2) - new_error * np.sin(a_rad)
+        count += 1
     return h_array, line_list
 
 '''
@@ -143,6 +148,9 @@ xy = np.concatenate((xy1, xy2, xy3, xy4), axis=1)
 '''
 
 th, rh = np.loadtxt('sampleScan.txt', delimiter=' ', unpack=True)
+#th = np.array([0, 0.1745329252, 0.3490658504, 0.5235987756, 0.6981317008, 0.872664626])
+#rh = np.array([1, 1.1305158748, 1.3472963553, 1.7320508076, 2.5320888862, 4.987241533])
+
 xy = np.array([rh * np.cos(th), rh * np.sin(th)])
 
 H, lines = hough_lines(rh, th)
@@ -150,7 +158,8 @@ H, lines = hough_lines(rh, th)
 plt.figure(1)
 plt.scatter(xy[0], xy[1])
 
-colors = ['red', 'green', 'blue']
+
+colors = ['red', 'blue', 'green']
 i = 0
 for line in lines:
     plt.scatter(line.p0[0], line.p0[1], c=colors[i], marker='X')

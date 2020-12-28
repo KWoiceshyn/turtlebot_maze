@@ -1,15 +1,17 @@
 #include <cassert>
 #include <iostream>
+#include <algorithm>
 #include "../include/turtlebot_maze/wall_detection.h"
 
 namespace turtlebot_maze{
 
     WallDetection::WallDetection(double max_range) :
     max_deviation_{0.12},
+    max_range_diff_{1.2},
     theta_inc_{2.0 * M_PI / 180.0},
-    grid_size_{static_cast<std::size_t> (M_PI / theta_inc_)},
-    r_inc_{max_range / grid_size_},
-    detect_threshold_{40}
+    grid_size_{static_cast<int> (2.0 * M_PI / theta_inc_)}, // [-pi, pi]
+    r_inc_{2.0 * max_range / grid_size_}, // positive and negative ranges
+    detect_threshold_{80}
     {
         accumulator_.resize(grid_size_ + 2); // pad with zeros
         for(auto& col : accumulator_)
@@ -39,7 +41,7 @@ namespace turtlebot_maze{
             if(Distance(pose.p, wall.p_c) > Distance(pose.p, wall.p_e)){
                 std::swap(wall.p_c, wall.p_e);
             }
-            //std::cout << wall.a <<" "<<wall.r<<" "<<wall.p_c.x<<" "<<wall.p_c.y<<" "<<wall.p_e.x<<" "<<wall.p_e.y<<std::endl;
+            //std::cout <<"robot frame a "<< wall.a <<" r "<<wall.r<<" x0 "<<wall.p_c.x<<" y0 "<<wall.p_c.y<<" x1 "<<wall.p_e.x<<" y1 "<<wall.p_e.y<<std::endl;
         }
 
         // convert wall models into the global frame
@@ -47,7 +49,7 @@ namespace turtlebot_maze{
             wall.p_c = TransformToGlobal(wall.p_c, pose);
             wall.p_e = TransformToGlobal(wall.p_e, pose);
             wall.a = WrapAngle(wall.a + pose.h);
-            //std::cout << "transformed "<< wall.a <<" "<<wall.r<<" "<<wall.p_c.x<<" "<<wall.p_c.y<<" "<<wall.p_e.x<<" "<<wall.p_e.y<<std::endl;
+            //std::cout << "transformed a "<< wall.a <<" r "<<wall.r<<" x0 "<<wall.p_c.x<<" y0 "<<wall.p_c.y<<" x1 "<<wall.p_e.x<<" y1 "<<wall.p_e.y<<std::endl;
         }
 
     }
@@ -57,15 +59,15 @@ namespace turtlebot_maze{
 
         assert(ranges.size() == angles.size());
 
-        for(auto i = 0; i < ranges.size(); ++i){
-            double xi = ranges[i] * cos(angles[i]);
-            double yi = ranges[i] * sin(angles[i]);
-            for(int j = 0; j < grid_size_; ++j){
-                double theta = j*theta_inc_;
-                double r = std::fabs(xi * cos(theta) + yi * sin(theta));
+        for(auto j = 0; j < ranges.size(); ++j){
+            double xj = ranges[j] * cos(angles[j] - laser_offset_);
+            double yj = ranges[j] * sin(angles[j] - laser_offset_);
+            for(int i = -grid_size_/2; i < grid_size_/2; ++i){
+                double theta = i*theta_inc_;
+                double r = xj * cos(theta) + yj * sin(theta);
                 auto r_idx = static_cast<int> (r / r_inc_);
-                if(r_idx >= 0 && r_idx < grid_size_)
-                    accumulator_[j + 1][r_idx + 1] += 1;
+                if(r_idx >= -grid_size_/2 && r_idx < grid_size_/2)
+                    accumulator_[i + grid_size_/2][r_idx + grid_size_/2] += 1;
             }
         }
     }
@@ -73,8 +75,8 @@ namespace turtlebot_maze{
     void WallDetection::FindPeaks() {
 
         int count = 0;
-        for(auto i = 1; i <= grid_size_; ++i){
-            for(auto j = 1; j <= grid_size_; ++j){
+        for(int i = 1; i <= grid_size_; ++i){
+            for(int j = 1; j <= grid_size_; ++j){
                 if(accumulator_[i][j] >= detect_threshold_ && // check greater than 8 neighbors
                    accumulator_[i][j] >= accumulator_[i-1][j] &&
                    accumulator_[i][j] >= accumulator_[i+1][j] &&
@@ -83,78 +85,62 @@ namespace turtlebot_maze{
                    accumulator_[i][j] >= accumulator_[i-1][j-1] &&
                    accumulator_[i][j] >= accumulator_[i-1][j+1] &&
                    accumulator_[i][j] >= accumulator_[i+1][j-1] &&
-                   accumulator_[i][j] >= accumulator_[i+1][j+1]){
+                   accumulator_[i][j] >= accumulator_[i+1][j+1] &&
+                   j >= grid_size_/2){ // only want positive range values
                     if(count < 2){
-                        walls_.emplace_back(WallModel{i * theta_inc_, j * r_inc_});
-                        if(count == 1){
-                            if(walls_[1].a < walls_[0].a)
-                                std::swap(walls_[0], walls_[1]);
+                        walls_.emplace_back(WallModel{(i-1-grid_size_/2) * theta_inc_, (j-1-grid_size_/2) * r_inc_});
+                        if(count == 1 && std::fabs(walls_[1].a + laser_offset_) < std::fabs(walls_[0].a + laser_offset_)){
+                            std::swap(walls_[0], walls_[1]);
                         }
                         ++count;
                     }else{
-                        if(std::fabs(i*theta_inc_) < std::fabs(walls_[0].a)){ // find wall that is closest to robot's right
-                            walls_[0].a = i * theta_inc_;
-                            walls_[0].r = j * r_inc_;
+                        if(std::fabs((i-1-grid_size_/2)*theta_inc_ + laser_offset_) < std::fabs(walls_[0].a + laser_offset_)){ // find wall that is closest to robot's right
+                            walls_[0].a = (i-1-grid_size_/2) * theta_inc_;
+                            walls_[0].r = (j-1-grid_size_/2) * r_inc_;
                         }
-                        if(std::fabs(M_PI - i*theta_inc_) < std::fabs(M_PI - walls_[1].r)){ // find the wall that is closest to robot's left
-                            walls_[1].a = i * theta_inc_;
-                            walls_[1].r = j * r_inc_;
+                        if(std::fabs((i-1-grid_size_/2)*theta_inc_ - laser_offset_) < std::fabs(walls_[1].a - laser_offset_)){ // find wall that is closest to robot's left
+                            walls_[1].a = (i-1-grid_size_/2) * theta_inc_;
+                            walls_[1].r = (j-1-grid_size_/2) * r_inc_;
                         }
                     }
                 }
             }
         }
+        //std::sort(walls_.begin(), walls_.end(), [](const WallModel& lhs, const WallModel& rhs){ return lhs.a < rhs.a;});
     }
 
     void WallDetection::FindEndPoints(const std::vector<double> &ranges, const std::vector<double> &angles) {
 
-        for(auto& wall : walls_){
+        for(auto ii = 0; ii < 2; ++ii){
+
+            double ang = walls_[ii].a + laser_offset_;
             // angles should be sorted in increasing order
-            auto it = std::lower_bound(angles.begin(), angles.end(), wall.a);
-            int idx = std::distance(angles.begin(), it);
+            auto it = std::lower_bound(angles.begin(), angles.end(), ang);
+            int idx = std::min(static_cast<int>(std::distance(angles.begin(), it)), static_cast<int>(angles.size() - 1));
             assert(idx >= 0 && idx < angles.size()); // something wrong if not in the array
             bool found_end = false;
 
-            // walk down the scan
-            for(int i = idx - 1; i >= 0; --i){
-                double error  = ranges[i] * cos(angles[i] - wall.a) - wall.r;
-                if(std::fabs(error) > max_deviation_){
-                    // use the previous good point
-                    double still_good_error = ranges[i+1] * cos(angles[i+1] - wall.a) - wall.r;
-                    // assign endpoints arbitrarily here
-                    // force endpoint to lie on line defined by wall model
-                    wall.p_c.x = ranges[i+1] * cos(angles[i+1]) - still_good_error * cos(wall.a);
-                    wall.p_c.y = ranges[i+1] * sin(angles[i+1]) - still_good_error * sin(wall.a);
-                    found_end = true;
-                    break;
-                }
-            }
-            if(!found_end){ // endpoint is start of scan
-                double error_delta = ranges[0] * cos(angles[0] - wall.a) - wall.r;
-                wall.p_c.x = ranges[0] * cos(angles[0]) - error_delta * cos(wall.a);
-                wall.p_c.y = ranges[0] * sin(angles[0]) - error_delta * sin(wall.a);
-            }
+            int incr = ii == 0 ? 1 : -1;
+            int end_idx = ii == 0 ? angles.size() : -1;
 
-            // walk up the scan
-            found_end = false;
-            for(int i = idx + 1; i < angles.size(); ++i){
-                double error  = ranges[i] * cos(angles[i] - wall.a) - wall.r;
-                if(std::fabs(error) > max_deviation_){
+            // walk up the scan for right wall, down the scan for left wall
+            for(int i = idx + incr; i != end_idx; i += incr){
+                double error  = ranges[i] * cos(angles[i] - ang) - walls_[ii].r;
+                if(std::fabs(error) > max_deviation_ || std::fabs(ranges[i] - ranges[i-incr]) > max_range_diff_){
                     // use the previous good point
-                    double still_good_error = ranges[i-1] * cos(angles[i-1] - wall.a) - wall.r;
-                    // assign endpoints arbitrarily here
+                    double still_good_error = ranges[i-incr] * cos(angles[i-incr] - ang) - walls_[ii].r;
                     // force endpoint to lie on line defined by wall model
-                    wall.p_e.x = ranges[i-1] * cos(angles[i-1]) - still_good_error * cos(wall.a);
-                    wall.p_e.y = ranges[i-1] * sin(angles[i-1]) - still_good_error * sin(wall.a);
+                    walls_[ii].p_e.x = ranges[i-incr] * cos(angles[i-incr] - laser_offset_) - still_good_error * cos(ang);
+                    walls_[ii].p_e.y = ranges[i-incr] * sin(angles[i-incr] - laser_offset_) - still_good_error * sin(ang);
                     found_end = true;
                     break;
                 }
             }
             if(!found_end){ // endpoint is end of scan
-                auto e = angles.size() - 1;
-                double error_delta = ranges[e] * cos(angles[e] - wall.a) - wall.r;
-                wall.p_e.x = ranges[e] * cos(angles[e]) - error_delta * cos(wall.a);
-                wall.p_e.y = ranges[e] * sin(angles[e]) - error_delta * sin(wall.a);
+                int e = end_idx - incr;
+                double error_delta = ranges[e] * cos(angles[e] - ang) - walls_[ii].r;
+                walls_[ii].p_e.x = ranges[e] * cos(angles[e] - laser_offset_) - error_delta * cos(ang);
+                walls_[ii].p_e.y = ranges[e] * sin(angles[e] - laser_offset_) - error_delta * sin(ang);
             }
         }
     }

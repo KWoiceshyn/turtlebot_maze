@@ -36,9 +36,12 @@ namespace turtlebot_maze{
 
         std::vector<WallModel> walls_; // stored wall parameters
 
+        const double laser_offset_ {M_PI_2}; // laser zeroth scan axis aligned with robot -y axis
+
         const double max_deviation_; // deviation from line model that signifies an endpoint
+        const double max_range_diff_; // difference threshold between 2 adjacent ranges that indicates break in wall model
         const double theta_inc_; // angle resolution in radians
-        const std::size_t grid_size_; // size of square accumulator matrix
+        const int grid_size_; // size of square accumulator matrix
         const double r_inc_; // range (distance) resolution in meters
         const int detect_threshold_; // min number of Hough votes (scan points) for a valid wall detection
 

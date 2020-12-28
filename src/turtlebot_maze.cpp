@@ -14,8 +14,12 @@ namespace turtlebot_maze {
               center_range_{1.0}
     {
         this->init();
-        wd_ = std::make_unique<WallDetection>(4.0);
+        wd_ = std::make_unique<WallDetection>(10.0);
         ph_ = std::make_unique<PositionHistory>();
+    }
+
+    TurtleBotMaze::~TurtleBotMaze(){
+        wall_detect_record_.close();
     }
 
     void TurtleBotMaze::init() {
@@ -26,7 +30,7 @@ namespace turtlebot_maze {
         teleporter_ = nh_.serviceClient<gazebo_msgs::SetModelState>("/gazebo/set_model_state");
 
         geometry_msgs::Point init_position;
-        init_position.x = 0.0;
+        init_position.x = -2.0;
         init_position.y = 0.0;
         init_position.z = 0.0;
 
@@ -59,6 +63,9 @@ namespace turtlebot_maze {
 
         last_wall_update_ = ros::Time::now();
         //TODO: Re-init the hokuyo?
+        wall_detect_record_.open("wallDetections.csv");
+        if(!wall_detect_record_.is_open())
+            std::cerr << "File not open\n";
     }
 
     void TurtleBotMaze::follow_wall() {
@@ -69,7 +76,9 @@ namespace turtlebot_maze {
             //ROS_INFO("Ang cmd: %f", move_cmd.angular.z);
             vel_publisher_.publish(move_cmd);
             ros::spinOnce();
-            if(ros::Time::now().toSec() - last_wall_update_.toSec() > 5.0){
+            if(ros::Time::now().toSec() - last_wall_update_.toSec() > 1.0 &&
+                    current_scan_.ranges[left_laser_idx_] < 1.2 &&
+                    current_scan_.ranges[right_laser_idx_] < 1.2){
                 update_walls();
                 last_wall_update_ = ros::Time::now();
             }
@@ -131,6 +140,8 @@ namespace turtlebot_maze {
         current_pose_.p.x = msg.pose.pose.position.x;
         current_pose_.p.y = msg.pose.pose.position.y;
         current_pose_.h = yaw;
+
+        current_odom_ = msg;
     }
 
     void TurtleBotMaze::update_walls() {
@@ -149,11 +160,21 @@ namespace turtlebot_maze {
         ph_->AddPoint(current_pose_.p);
         //ph_->PrintPoints();
 
-        ROS_INFO("Pose: x %f y %f h %f", current_pose_.p.x, current_pose_.p.y, current_pose_.h);
-        int cc = 0;
+        ROS_INFO("Pose: x %f y %f h %f z %f w %f", current_pose_.p.x, current_pose_.p.y, current_pose_.h,
+        current_odom_.pose.pose.orientation.z, current_odom_.pose.pose.orientation.w);
+        wall_detect_record_ << current_pose_.p.x << "," << current_pose_.p.y << "," << current_pose_.h << ",";
+        /*int cc = 0;
         for (const auto &w : wd_->GetWalls()) {
             ROS_INFO("Walls: r %f a %f x0 %f y0 %f x1 %f y1 %f n %d", w.r, w.a, w.p_c.x, w.p_c.y, w.p_e.x, w.p_e.y, ++cc);
-        }
+        }*/
+        auto w = wd_->GetWalls().front();
+        ROS_INFO("RWall: r %f a %f x0 %f y0 %f x1 %f y1 %f", w.r, w.a, w.p_c.x, w.p_c.y, w.p_e.x, w.p_e.y);
+        wall_detect_record_ << w.p_e.x << "," << w.p_e.y << ",";
+        w = wd_->GetWalls().back();
+        ROS_INFO("LWall: r %f a %f x0 %f y0 %f x1 %f y1 %f", w.r, w.a, w.p_c.x, w.p_c.y, w.p_e.x, w.p_e.y);
+        wall_detect_record_ << w.p_e.x << "," << w.p_e.y;
+        //if(cc == 1) wall_detect_record_ << ",";
+        wall_detect_record_ << std::endl;
         std::cout << "-----------------------------------\n";
 
         //write a scan to file
