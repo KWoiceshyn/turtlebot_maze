@@ -55,6 +55,8 @@ namespace turtlebot_maze {
 
         std::vector<int> check_open_exits();
 
+        void reset_wall_estimates();
+
         const size_t right_laser_idx_ = 0;
         const size_t center_laser_idx_ = 179;
         const size_t lf_laser_idx_ = 320; //20 deg forward from left laser

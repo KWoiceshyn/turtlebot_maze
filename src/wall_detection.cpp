@@ -6,7 +6,7 @@
 namespace turtlebot_maze{
 
     WallDetection::WallDetection(double max_range) :
-    max_deviation_{0.12},
+    max_deviation_{0.2},
     max_range_diff_{1.2},
     max_range_{max_range},
     theta_inc_{2.0 * M_PI / 180.0},
@@ -171,18 +171,26 @@ namespace turtlebot_maze{
     void WallDetection::GetWalls(turtlebot_maze::WallModel &left_wall, turtlebot_maze::WallModel &right_wall) {
         right_wall.r = walls_[0].r; right_wall.a = walls_[0].a;
         left_wall.r = walls_[1].r; left_wall.a = walls_[1].a;
+        // TODO: should r and a be median as well?
 
         // find medians of saved values
-        if(!right_wall_xe_.empty()){
+        if(!right_wall_xe_.empty() && !right_wall_ye_.empty()) {
             auto n = right_wall_xe_.size();
-            std::nth_element(right_wall_xe_.begin(), right_wall_xe_.begin() + n/2, right_wall_xe_.end());
-            right_wall.p_e.x = right_wall_xe_[n/2];
-            std::nth_element(right_wall_ye_.begin(), right_wall_ye_.begin() + n/2, right_wall_ye_.end());
-            right_wall.p_e.y = right_wall_ye_[n/2];
-            std::nth_element(left_wall_xe_.begin(), left_wall_xe_.begin() + n/2, left_wall_xe_.end());
-            left_wall.p_e.x = left_wall_xe_[n/2];
-            std::nth_element(left_wall_ye_.begin(), left_wall_ye_.begin() + n/2, left_wall_ye_.end());
-            left_wall.p_e.y = left_wall_ye_[n/2];
+            auto m = right_wall_ye_.size();
+            if(n >= 5 && m >= 5) {
+                std::nth_element(right_wall_xe_.begin(), right_wall_xe_.begin() + n / 2, right_wall_xe_.end());
+                std::nth_element(right_wall_ye_.begin(), right_wall_ye_.begin() + m / 2, right_wall_ye_.end());
+                right_wall.p_e = Point{right_wall_xe_[n / 2], right_wall_ye_[m / 2]};
+            }
+        }
+        if(!left_wall_xe_.empty() && !left_wall_ye_.empty()){
+            auto n = left_wall_xe_.size();
+            auto m = left_wall_ye_.size();
+            if(n >=5 && m >=5){
+                std::nth_element(left_wall_xe_.begin(), left_wall_xe_.begin() + n/2, left_wall_xe_.end());
+                std::nth_element(left_wall_ye_.begin(), left_wall_ye_.begin() + m/2, left_wall_ye_.end());
+                left_wall.p_e = Point{left_wall_xe_[n/2], left_wall_ye_[m/2]};
+            }
         }
     }
 

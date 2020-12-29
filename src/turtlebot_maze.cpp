@@ -166,8 +166,13 @@ namespace turtlebot_maze {
     void TurtleBotMaze::follow_wall() {
         geometry_msgs::Twist move_cmd;
         move_cmd.linear.x = 0.2;
+        //while(current_scan_.header.seq == 0)
+            //ros::spinOnce();
+        //update_walls();
+        //last_wall_update_ = ros::Time::now();
         while (ros::ok()) {
             //move_cmd.angular.z = k_ * heading_error_; //simple P-controller
+            //heading_error_ = wall_estimates_[1].a - (current_pose_.h + M_PI_2);
             move_cmd.angular.z = pid_->RunControlHE(0.6, left_range_, ros::Time::now().toSec(), heading_error_);
             //ROS_INFO("LR: %f HE: %f", left_range_, heading_error_);
             vel_publisher_.publish(move_cmd);
@@ -175,8 +180,10 @@ namespace turtlebot_maze {
             if(ros::Time::now().toSec() - last_wall_update_.toSec() > 1.0){
                 if(left_range_< 1.2 && right_range_ < 1.2)
                     update_walls();
-                else
+                else{
                     wd_->ResetMedians();
+                    reset_wall_estimates();
+                }
                 last_wall_update_ = ros::Time::now();
             }
             loop_rate_->sleep();
@@ -334,6 +341,15 @@ namespace turtlebot_maze {
             }
         }
         return open_exits;
+    }
+
+    void TurtleBotMaze::reset_wall_estimates() {
+        wall_estimates_[0].r = 0;
+        wall_estimates_[0].a = 0;
+        wall_estimates_[0].p_e = Point();
+        wall_estimates_[1].r = 0;
+        wall_estimates_[1].a = 0;
+        wall_estimates_[1].p_e = Point();
     }
 }
 
