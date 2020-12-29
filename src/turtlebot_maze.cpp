@@ -17,6 +17,7 @@ namespace turtlebot_maze {
         wd_ = std::make_unique<WallDetection>(4.0);
         ph_ = std::make_unique<PositionHistory>();
         pid_ = std::make_unique<PID>(-0.5, 0.05, 1.0);
+        wall_estimates_ = {WallModel(), WallModel()};
     }
 
     TurtleBotMaze::~TurtleBotMaze(){
@@ -171,10 +172,11 @@ namespace turtlebot_maze {
             //ROS_INFO("LR: %f HE: %f", left_range_, heading_error_);
             vel_publisher_.publish(move_cmd);
             ros::spinOnce();
-            if(ros::Time::now().toSec() - last_wall_update_.toSec() > 1.0 &&
-                    left_range_< 1.2 &&
-                    right_range_ < 1.2){
-                update_walls();
+            if(ros::Time::now().toSec() - last_wall_update_.toSec() > 1.0){
+                if(left_range_< 1.2 && right_range_ < 1.2)
+                    update_walls();
+                else
+                    wd_->ResetMedians();
                 last_wall_update_ = ros::Time::now();
             }
             loop_rate_->sleep();
@@ -273,12 +275,11 @@ namespace turtlebot_maze {
         for (const auto &w : wd_->GetWalls()) {
             ROS_INFO("Walls: r %f a %f x0 %f y0 %f x1 %f y1 %f n %d", w.r, w.a, w.p_c.x, w.p_c.y, w.p_e.x, w.p_e.y, ++cc);
         }*/
-        auto w = wd_->GetWalls().front();
-        ROS_INFO("RWall: r %f a %f x0 %f y0 %f x1 %f y1 %f", w.r, w.a, w.p_c.x, w.p_c.y, w.p_e.x, w.p_e.y);
-        wall_detect_record_ << w.p_e.x << "," << w.p_e.y << ",";
-        w = wd_->GetWalls().back();
-        ROS_INFO("LWall: r %f a %f x0 %f y0 %f x1 %f y1 %f", w.r, w.a, w.p_c.x, w.p_c.y, w.p_e.x, w.p_e.y);
-        wall_detect_record_ << w.p_e.x << "," << w.p_e.y;
+        wd_->GetWalls(wall_estimates_[1], wall_estimates_[0]);
+        ROS_INFO("RWall: r %f a %f x1 %f y1 %f", wall_estimates_[0].r, wall_estimates_[0].a, wall_estimates_[0].p_e.x, wall_estimates_[0].p_e.y);
+        wall_detect_record_ << wall_estimates_[0].p_e.x << "," << wall_estimates_[0].p_e.y << ",";
+        ROS_INFO("LWall: r %f a %f x1 %f y1 %f", wall_estimates_[1].r, wall_estimates_[1].a, wall_estimates_[1].p_e.x, wall_estimates_[1].p_e.y);
+        wall_detect_record_ << wall_estimates_[1].p_e.x << "," << wall_estimates_[1].p_e.y;
         //if(cc == 1) wall_detect_record_ << ",";
         wall_detect_record_ << std::endl;
         std::cout << "-----------------------------------\n";

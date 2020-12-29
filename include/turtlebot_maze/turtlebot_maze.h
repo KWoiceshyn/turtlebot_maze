@@ -76,7 +76,7 @@ namespace turtlebot_maze {
 
         std::ofstream wall_detect_record_;
 
-        //std::vector<WallModel> right_walls_;
+        std::vector<WallModel> wall_estimates_;
         //std::vector<WallModel> center_walls_;
         //std::vector<WallModel> left_walls_;
 

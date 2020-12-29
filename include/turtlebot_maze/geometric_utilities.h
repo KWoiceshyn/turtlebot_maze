@@ -23,7 +23,7 @@ namespace turtlebot_maze {
 
     struct WallModel {
 
-        WallModel(double aa, double rr){
+        WallModel(double aa = 0.0, double rr = 0.0){
             a = aa;
             r = rr;
             p_c.x = 0; p_c.y = 0; p_e.x = 0; p_e.y = 0;

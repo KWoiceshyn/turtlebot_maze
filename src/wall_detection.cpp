@@ -46,12 +46,19 @@ namespace turtlebot_maze{
         }*/
 
         // convert wall models into the global frame
-        for(auto& wall : walls_){
+        for(auto i = 0; i < 2; ++i){
             //wall.p_c = TransformToGlobal(wall.p_c, pose);
-            if(std::fabs(wall.p_e.y) > 0.1){
-                wall.p_e = TransformToGlobal(wall.p_e, pose);
+            if(std::fabs(walls_[i].p_e.y) > 0.1){
+                walls_[i].p_e = TransformToGlobal(walls_[i].p_e, pose);
+                if(i == 0){
+                    right_wall_xe_.push_back(walls_[i].p_e.x);
+                    right_wall_ye_.push_back(walls_[i].p_e.y);
+                }else{
+                    left_wall_xe_.push_back(walls_[i].p_e.x);
+                    left_wall_ye_.push_back(walls_[i].p_e.y);
+                }
             }
-            wall.a = WrapAngle(wall.a + pose.h);
+            walls_[i].a = WrapAngle(walls_[i].a + pose.h);
             //std::cout << "transformed a "<< wall.a <<" r "<<wall.r<<" x0 "<<wall.p_c.x<<" y0 "<<wall.p_c.y<<" x1 "<<wall.p_e.x<<" y1 "<<wall.p_e.y<<std::endl;
         }
 
@@ -161,8 +168,29 @@ namespace turtlebot_maze{
         }
     }
 
-    const std::vector<WallModel>& WallDetection::GetWalls() {
-        return walls_;
+    void WallDetection::GetWalls(turtlebot_maze::WallModel &left_wall, turtlebot_maze::WallModel &right_wall) {
+        right_wall.r = walls_[0].r; right_wall.a = walls_[0].a;
+        left_wall.r = walls_[1].r; left_wall.a = walls_[1].a;
+
+        // find medians of saved values
+        if(!right_wall_xe_.empty()){
+            auto n = right_wall_xe_.size();
+            std::nth_element(right_wall_xe_.begin(), right_wall_xe_.begin() + n/2, right_wall_xe_.end());
+            right_wall.p_e.x = right_wall_xe_[n/2];
+            std::nth_element(right_wall_ye_.begin(), right_wall_ye_.begin() + n/2, right_wall_ye_.end());
+            right_wall.p_e.y = right_wall_ye_[n/2];
+            std::nth_element(left_wall_xe_.begin(), left_wall_xe_.begin() + n/2, left_wall_xe_.end());
+            left_wall.p_e.x = left_wall_xe_[n/2];
+            std::nth_element(left_wall_ye_.begin(), left_wall_ye_.begin() + n/2, left_wall_ye_.end());
+            left_wall.p_e.y = left_wall_ye_[n/2];
+        }
+    }
+
+    void WallDetection::ResetMedians() {
+        left_wall_xe_.clear();
+        left_wall_ye_.clear();
+        right_wall_xe_.clear();
+        right_wall_ye_.clear();
     }
 
 }
