@@ -40,8 +40,10 @@ namespace turtlebot_maze {
     // rotate and translate a point in the robot frame to the global frame
     Point TransformToGlobal(const Point& p_r, const Pose& pose);
 
-    // constrain angle to
+    // constrain angle to [-pi, pi]
     double WrapAngle(double angle);
+
+    double AngleDifference(double a1, double a2);
 
 } // turtlebot_maze
 

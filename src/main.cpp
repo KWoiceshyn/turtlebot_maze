@@ -26,12 +26,12 @@ int main(int argc, char **argv)
     signal(SIGINT, mySigintHandler);
 
     TurtleBotMaze tb_maze(nh);
-    tb_maze.follow_wall();
-    /*while(ros::ok()){
+    //tb_maze.follow_wall();
+    while(ros::ok()){
         ros::spinOnce();
         tb_maze.state_machine();
         tb_maze.loop_rate_->sleep();
-    }*/
+    }
 
 
 

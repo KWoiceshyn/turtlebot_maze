@@ -11,7 +11,8 @@ namespace turtlebot_maze {
               heading_error_{0},
               center_range_{1.0},
               current_state_{States::INITIALIZE},
-              last_state_{States::INITIALIZE}
+              last_state_{States::INITIALIZE},
+              last_min_distance_{1e3}
     {
         init();
         wd_ = std::make_unique<WallDetection>(4.0);
@@ -94,25 +95,46 @@ namespace turtlebot_maze {
                     ROS_INFO("Entered Corridor state");
                     last_state_ = current_state_;
                     pid_->Reset(ros::Time::now().toSec());
+                    update_walls();
+                    last_wall_update_ = ros::Time::now();
                 }
                 geometry_msgs::Twist move_cmd;
                 move_cmd.linear.x = 0.2;
                 //move_cmd.angular.z = k_ * heading_error_; //simple P-controller
-                move_cmd.angular.z = pid_->RunControlHE(0.6, left_range_, ros::Time::now().toSec(), heading_error_);
+                heading_error_ = AngleDifference(stable_desired_heading(), current_pose_.h);
+                if(std::fabs(heading_error_) > M_PI_4){
+                    ROS_INFO("HEADING ERROR %f", heading_error_);
+                    heading_error_ = 0;
+                }
+                move_cmd.angular.z = pid_->RunControlHE(0.7, left_range_, ros::Time::now().toSec(), heading_error_);
                 // TODO: Use the wd_ and PID controller
                 //ROS_INFO("Ang cmd: %f", move_cmd.angular.z);
                 vel_publisher_.publish(move_cmd);
                 if(ros::Time::now().toSec() - last_wall_update_.toSec() > 1.0){
                     update_walls(); // TODO: call the wd_ and ph_ directly here
+                    if (stable_endpoint_estimate()){
+                        ROS_INFO("STABLE ENDPOINT ESTIMATE");
+                        double min_distance = std::min(Distance(current_pose_.p, wall_estimates_[0].p_e), Distance(current_pose_.p, wall_estimates_[1].p_e));
+                        if(min_distance - last_min_distance_ > 1e-3){
+                            ROS_INFO("CLEARED WALL %f %f", min_distance, last_min_distance_);
+                            stop();
+                            current_state_ = States::INTERSECTION;
+                            pid_->Reset(ros::Time::now().toSec());
+                            wd_->ResetMedians();
+                            reset_wall_estimates();
+                            stable_desired_heading(); // clear the static variables
+                        }
+                        last_min_distance_ = min_distance;
+                    }
                     last_wall_update_ = ros::Time::now();
                 }
-                if(left_range_ > 1.2 * corridor_max_wall_dist_ ||
+                /*if(left_range_ > 1.2 * corridor_max_wall_dist_ ||
                    center_range_ < corridor_max_wall_dist_ ||
                    right_range_ > 1.2 * corridor_max_wall_dist_){
                     // TODO: use the ClearedWall() from wd_
                     current_state_ = States::INTERSECTION;
                     stop();
-                }
+                }*/
             }
                 break;
 
@@ -120,11 +142,12 @@ namespace turtlebot_maze {
                 if (last_state_ != current_state_) {
                     ROS_INFO("Entered Intersection state");
                     last_state_ = current_state_;
+                    last_min_distance_ = 1e3;
                 }
                 drive_straight(0.5); // drive forward a bit to clear walls
                  // TODO: control this drive straight to the last wall
                 ros::spinOnce();
-                update_walls();
+                //update_walls();
                 // check exits
                 std::vector<int> open_exits = check_open_exits();
 
@@ -178,9 +201,19 @@ namespace turtlebot_maze {
             vel_publisher_.publish(move_cmd);
             ros::spinOnce();
             if(ros::Time::now().toSec() - last_wall_update_.toSec() > 1.0){
-                if(left_range_< 1.2 && right_range_ < 1.2)
+                if (left_range_ < 1.2 && right_range_ < 1.2){
                     update_walls();
-                else{
+                    if (stable_endpoint_estimate()){
+                        ROS_INFO("STABLE ENDPOINT ESTIMATE");
+                        double min_distance = std::min(Distance(current_pose_.p, wall_estimates_[0].p_e), Distance(current_pose_.p, wall_estimates_[1].p_e));
+                        if(min_distance - last_min_distance_ > 1e-3){
+                            ROS_INFO("CLEARED WALL %f %f", min_distance, last_min_distance_);
+                        }
+                        last_min_distance_ = min_distance;
+                    }
+
+                }else{
+                    last_min_distance_ = 1e3;
                     wd_->ResetMedians();
                     reset_wall_estimates();
                 }
@@ -237,10 +270,10 @@ namespace turtlebot_maze {
         left_range_ = msg.ranges[left_laser_idx_];
         center_range_ = msg.ranges[center_laser_idx_];
         right_range_ = msg.ranges[right_laser_idx_];
-        double lf_range = msg.ranges[lf_laser_idx_];
+        //double lf_range = msg.ranges[lf_laser_idx_];
         //when robot is parallel to wall this ratio corresponds to a 20 deg angle
-        double actual_ratio = left_range_ / lf_range;
-        heading_error_ = desired_ratio_ - actual_ratio; //not actually an angle
+        //double actual_ratio = left_range_ / lf_range;
+        //heading_error_ = desired_ratio_ - actual_ratio; //not actually an angle
         //ROS_INFO("Heading error: %f", heading_error_);
         current_scan_ = msg;
     }
@@ -341,6 +374,40 @@ namespace turtlebot_maze {
             }
         }
         return open_exits;
+    }
+
+    bool TurtleBotMaze::stable_endpoint_estimate() {
+        static int stable_count = 0;
+        static Point last_right_point, last_left_point;
+        if(std::fabs(wall_estimates_[0].p_e.x) > 1e-3 && std::fabs(wall_estimates_[1].p_e.x) > 1e-3){
+            if(Distance(last_right_point, wall_estimates_[0].p_e) < 0.1 && Distance(last_left_point, wall_estimates_[1].p_e) < 0.1)
+                ++stable_count;
+        }else{
+            stable_count = 0;
+        }
+        last_right_point = wall_estimates_[0].p_e;
+        last_left_point = wall_estimates_[1].p_e;
+        return stable_count >= 2;
+    }
+
+    double TurtleBotMaze::stable_desired_heading() {
+        static int stable_count = 0;
+        static double last_left_wall_est = M_PI_4;
+        if(wall_estimates_[0].r > 0.1 && wall_estimates_[1].r > 0.1){
+            if(stable_count < 3 && AngleDifference(last_left_wall_est, wall_estimates_[1].a) < 0.1){
+                ++stable_count;
+            }
+            if(stable_count == 3){
+                //ROS_INFO("STABLE DESIRED HEADING %f", last_left_wall_est);
+                return last_left_wall_est - M_PI_2;
+            }
+
+            last_left_wall_est = wall_estimates_[1].a;
+        }else{
+            last_left_wall_est = M_PI_4;
+            stable_count = 0;
+        }
+        return current_pose_.h;
     }
 
     void TurtleBotMaze::reset_wall_estimates() {

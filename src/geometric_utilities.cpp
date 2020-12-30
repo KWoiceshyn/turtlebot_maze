@@ -22,5 +22,12 @@ namespace turtlebot_maze{
         return angle;
     }
 
+    double AngleDifference(double a1, double a2){
+        double result = a1 - a2;
+        if(result > M_PI) result -= 2*M_PI;
+        if(result < -M_PI) result += 2*M_PI;
+        return result;
+    }
+
 }
 
