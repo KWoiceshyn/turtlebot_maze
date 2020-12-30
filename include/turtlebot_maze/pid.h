@@ -34,11 +34,11 @@ namespace turtlebot_maze {
             return p_gain_ * error + i_gain_ * i_term_ + d_gain_ * d_error;
         }
 
-        double RunControlHE(double sp, double fb, double t_now, double heading_error) {
+        double RunControlHE(double error, double t_now, double heading_error) {
 
             double delta_t = t_now - t_last_;
 
-            double error = sp - fb;
+            //double error = sp - fb;
             i_term_ += error * delta_t;
             i_term_ = std::max(std::min(i_term_, i_term_max_), -i_term_max_);
 
@@ -66,6 +66,6 @@ namespace turtlebot_maze {
         double t_last_;
     };
 
-}
+} // turtlebot_maze
 
 #endif //TURTLEBOT_MAZE_PID_H

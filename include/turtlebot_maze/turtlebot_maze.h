@@ -59,6 +59,8 @@ namespace turtlebot_maze {
 
         double stable_desired_heading();
 
+        double stable_desired_position();
+
         void reset_wall_estimates();
 
         const size_t right_laser_idx_ = 0;

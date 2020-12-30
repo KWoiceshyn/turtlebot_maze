@@ -43,7 +43,8 @@ namespace turtlebot_maze {
     // constrain angle to [-pi, pi]
     double WrapAngle(double angle);
 
-    double AngleDifference(double a1, double a2);
+    // handle the discontinuity at +- pi when subtracting b from a
+    double AngleDifference(double a, double b);
 
 } // turtlebot_maze
 

@@ -47,7 +47,7 @@ namespace turtlebot_maze{
 
         // convert wall models into the global frame
         for(auto i = 0; i < 2; ++i){
-            //wall.p_c = TransformToGlobal(wall.p_c, pose);
+            walls_[i].p_c = TransformToGlobal(walls_[i].p_c, pose);
             if(std::fabs(walls_[i].p_e.y) > 0.1){
                 walls_[i].p_e = TransformToGlobal(walls_[i].p_e, pose);
                 if(i == 0){
@@ -159,6 +159,13 @@ namespace turtlebot_maze{
                     break;
                 }
             }
+
+            // closest wall point is the one at the robot's side
+            int e = ii == 0 ? 0 : angles.size() - 1;
+            double error_delta = ranges[e] * cos(angles[e] - ang) - walls_[ii].r;
+            walls_[ii].p_c.x = ranges[e] * cos(angles[e] - laser_offset_) - error_delta * cos(ang);
+            walls_[ii].p_c.y = ranges[e] * sin(angles[e] - laser_offset_) - error_delta * sin(ang);
+
             if(!found_end){ // endpoint is end of scan
                 int e = end_idx - incr;
                 double error_delta = ranges[e] * cos(angles[e] - ang) - walls_[ii].r;
@@ -172,6 +179,8 @@ namespace turtlebot_maze{
         right_wall.r = walls_[0].r; right_wall.a = walls_[0].a;
         left_wall.r = walls_[1].r; left_wall.a = walls_[1].a;
         // TODO: should r and a be median as well?
+        right_wall.p_c = walls_[0].p_c;
+        left_wall.p_c = walls_[1].p_c;
 
         // find medians of saved values
         if(!right_wall_xe_.empty() && !right_wall_ye_.empty()) {
@@ -201,4 +210,4 @@ namespace turtlebot_maze{
         right_wall_ye_.clear();
     }
 
-}
+} // turtlebot_maze
