@@ -59,7 +59,7 @@ namespace turtlebot_maze {
 
         double stable_desired_heading();
 
-        double stable_desired_position();
+        double stable_desired_position(bool use_x, int error_sign);
 
         void reset_wall_estimates();
 

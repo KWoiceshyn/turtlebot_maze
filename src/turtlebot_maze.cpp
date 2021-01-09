@@ -107,21 +107,21 @@ namespace turtlebot_maze {
                     heading_error_ = 0;
                 }
                 // robot traveling in positive x direction
-                double test_dp = stable_desired_position();
+                double test_dp = stable_desired_position(true, 1); // TODO: dont call it twice
                 double pos_fb = current_pose_.p.y;
-                double error_sign =1.0; // TODO: make error wrt any line rather than 4 cardinal directions
+                int error_sign = 1; // TODO: make error wrt any line rather than 4 cardinal directions
                 if(std::fabs(std::fabs(current_pose_.h) - M_PI) < M_PI_4){ // robot traveling in negative x direction
-                    error_sign = -1.0;
+                    test_dp = stable_desired_position(true, -1);
                     pos_fb = current_pose_.p.y;
                     //ROS_INFO("POSITION ERROR -X %f %f", test_dp, pos_fb);
                 }
                 if(std::fabs(current_pose_.h - M_PI_2) < M_PI_4){ // robot traveling in positive y direction
-                    error_sign = -1.0;
+                    test_dp = stable_desired_position(false, -1);
                     pos_fb = current_pose_.p.x;
                     //ROS_INFO("POSITION ERROR +Y %f %f", test_dp, pos_fb);
                 }
                 if(std::fabs(current_pose_.h + M_PI_2) < M_PI_4){ // robot traveling in negative y direction
-                    error_sign = 1.0;
+                    test_dp = stable_desired_position(false, 1);
                     pos_fb = current_pose_.p.x;
                     //ROS_INFO("POSITION ERROR -Y %f %f", test_dp, pos_fb);
                 }
@@ -147,7 +147,7 @@ namespace turtlebot_maze {
                             wd_->ResetMedians();
                             reset_wall_estimates();
                             stable_desired_heading(); // clear the static variables
-                            stable_desired_position();
+                            stable_desired_position(false, 0);
                         }
                         last_min_distance_ = min_distance;
                     }
@@ -161,7 +161,7 @@ namespace turtlebot_maze {
                     wd_->ResetMedians();
                     reset_wall_estimates();
                     stable_desired_heading(); // clear the static variables
-                    stable_desired_position();
+                    stable_desired_position(false, 0);
                 }
                 /*if(left_range_ > 1.2 * corridor_max_wall_dist_ ||
                    center_range_ < corridor_max_wall_dist_ ||
@@ -500,38 +500,70 @@ namespace turtlebot_maze {
         return current_pose_.h;
     }
 
-    double TurtleBotMaze::stable_desired_position(){ // TODO : make bool, make it jive better with cases code above?
-        static int stable_count = 0;
-        static Point last_right_point, last_left_point;
-        if(std::fabs(wall_estimates_[0].p_c.x) > 1e-3 && std::fabs(wall_estimates_[1].p_c.x) > 1e-3){
-            if(std::fabs(std::fabs(current_pose_.h) - M_PI_2) < M_PI_4){ // robot facing along global y axis, care about x-coordinate
-                if(stable_count < 3 && std::fabs(last_right_point.x - wall_estimates_[0].p_c.x) < 0.1 &&
-                        std::fabs(last_left_point.x - wall_estimates_[1].p_c.x) < 0.1){
-                    ++stable_count;
-                }
-                if(stable_count == 3){
-                    //ROS_INFO("STABLE DESIRED POSITION Y %f", (last_left_point.x + last_right_point.x) / 2);
-                    return (last_left_point.x + last_right_point.x) / 2;
-                }
-            } else{ // robot facing along global x-axis, care about y-coordinate
-                if(stable_count < 3 && std::fabs(last_right_point.y - wall_estimates_[0].p_c.y) < 0.1 &&
-                   std::fabs(last_left_point.y - wall_estimates_[1].p_c.y) < 0.1){
-                    ++stable_count;
-                }
-                if(stable_count == 3){
-                    //ROS_INFO("STABLE DESIRED POSITION X %f", (last_left_point.y + last_right_point.y) / 2);
-                    return (last_left_point.y + last_right_point.y) / 2;
-                }
-            }
+    double TurtleBotMaze::stable_desired_position(bool use_x, int error_sign){ // TODO : make bool, make it jive better with cases code above?
+        static int left_stable_count = 0, right_stable_count = 0;
+        static double last_right_point = 0, last_left_point = 0;
 
-            last_right_point = wall_estimates_[0].p_c;
-            last_left_point = wall_estimates_[1].p_c;
-        }else{
-            stable_count = 0;
-            last_right_point = Point();
-            last_left_point = Point();
+        // assume heading doesn't change much throughout this process
+        double current_right_point = wall_estimates_[0].p_c.x;
+        double current_left_point = wall_estimates_[1].p_c.x;
+        double current_pose_point = current_pose_.p.x;
+        if(use_x) {// robot facing along global x-axis, care about y-coordinates
+            current_right_point = wall_estimates_[0].p_c.y;
+            current_left_point = wall_estimates_[1].p_c.y;
+            current_pose_point = current_pose_.p.y;
         }
+
+        if(std::fabs(current_right_point) > 1e-3){ // right wall valid
+            if(right_stable_count < 3){
+                if(std::fabs(last_right_point - current_right_point) < 0.1)
+                    ++right_stable_count;
+                last_right_point = current_right_point;
+            }
+            if(right_stable_count == 3 && std::fabs(last_right_point - current_right_point) > 0.1)
+                right_stable_count = 0;
+        }else{
+            last_right_point = 0;
+            right_stable_count = 0;
+        }
+
+        if(std::fabs(current_left_point) > 1e-3){ // left wall valid
+            if(left_stable_count < 3){
+                if(std::fabs(last_left_point - current_left_point) < 0.1)
+                    ++left_stable_count;
+                last_left_point = current_left_point;
+            }
+            if(left_stable_count == 3 && std::fabs(last_left_point - current_left_point) > 0.1)
+                left_stable_count = 0;
+        }else{
+            last_left_point = 0;
+            left_stable_count = 0;
+        }
+
+        int wall_choice = 0; // -1 for left, 1 for right, 0 for neither
+        if(left_stable_count == 3 && right_stable_count == 3){
+            if(std::fabs(last_left_point - last_right_point) < 2.0) { // you're in a corridor
+                ROS_INFO("CORRIDOR CENTERING");
+                return (last_left_point + last_right_point) / 2;
+            }
+            // otherwise, go close to whichever wall robot is already nearest to
+            if(std::fabs(current_pose_point - last_left_point) < std::fabs(current_pose_point - last_right_point))
+                wall_choice = -1;
+            else
+                wall_choice = 1;
+        }
+
+        if(wall_choice == 1 || (right_stable_count == 3 && left_stable_count < 3)){
+            ROS_INFO("HUG RIGHT WALL");
+            return last_right_point + error_sign * 0.75;
+        }
+        if(wall_choice == -1 || (left_stable_count == 3 && right_stable_count < 3)){
+            ROS_INFO("HUG LEFT WALL");
+            return last_left_point - error_sign * 0.75;
+        }
+
         return 0.0;
+
     }
 
     void TurtleBotMaze::reset_wall_estimates() {
