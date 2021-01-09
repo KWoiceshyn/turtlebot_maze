@@ -14,8 +14,9 @@ namespace turtlebot_maze{
         void PrintPoints();
 
     private:
+        bool AnyInRadius(const Point& point, double radius);
         bool AnyInRectangleHelper(double left, double right, double lower, double upper);
-        std::multimap<double, Point> visited_;
+        std::multimap<double, Point> visited_; // store of visited points in global frame, mapped by x-coordinate
     };
 }
 

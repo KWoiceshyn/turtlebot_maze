@@ -4,7 +4,8 @@
 namespace turtlebot_maze{
     
     void PositionHistory::AddPoint(const Point& pt){
-        visited_.insert(std::pair<double, Point>(pt.x, pt));
+        if(!AnyInRadius(pt, 0.5))
+            visited_.insert(std::pair<double, Point>(pt.x, pt));
     }
 
     bool PositionHistory::AnyInRectangle(const turtlebot_maze::Point &upper, const turtlebot_maze::Point &lower) {
@@ -25,6 +26,20 @@ namespace turtlebot_maze{
         while(it_left != it_right && it_left != visited_.end()){
 
             if(it_left->second.y > lower && it_left->second.y < upper)
+                return true;
+            ++it_left;
+        }
+        return false;
+    }
+
+    bool PositionHistory::AnyInRadius(const turtlebot_maze::Point &point, double radius) {
+        auto it_left = visited_.lower_bound(point.x - radius);
+        auto it_right = visited_.upper_bound(point.x + radius);
+
+        while(it_left != it_right && it_left != visited_.end()){
+            double dx = std::fabs(it_left->second.x - point.x);
+            double dy = dx < radius ? sqrt(pow(radius, 2) - pow(dx, 2)) : 0;
+            if(std::fabs(it_left->second.y - point.y) < dy)
                 return true;
             ++it_left;
         }

@@ -48,7 +48,7 @@ namespace turtlebot_maze{
         // convert wall models into the global frame
         for(auto i = 0; i < 2; ++i){
             walls_[i].p_c = TransformToGlobal(walls_[i].p_c, pose);
-            if(std::fabs(walls_[i].p_e.y) > 0.1){
+            if(std::fabs(walls_[i].p_e.y) > 0.1){ // TODO: use nan instead of zero check
                 walls_[i].p_e = TransformToGlobal(walls_[i].p_e, pose);
                 if(i == 0){
                     right_wall_xe_.push_back(walls_[i].p_e.x);
