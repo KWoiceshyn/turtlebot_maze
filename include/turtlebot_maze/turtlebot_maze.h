@@ -74,7 +74,7 @@ namespace turtlebot_maze {
         const double desired_ratio_ = cos(0.349); //20 deg
         const double corridor_max_wall_dist_ {1.0}; // max lateral distance to wall on either side to be in a corridor
         double heading_error_;
-        double center_range_, left_range_, right_range_;
+        double center_range_, left_range_, right_range_, last_left_range_, last_right_range_;
         double last_min_distance_;
 
         std::unique_ptr<WallDetection> wd_;

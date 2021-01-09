@@ -123,6 +123,10 @@ namespace turtlebot_maze{
             for(const auto& p : record)
                 std::cout << "a " << p.x << " r " << p.y << "\n";
         }
+        if(std::fabs(walls_[0].a + laser_offset_) > M_PI_4)
+            walls_[0].r = 0; // dont update
+        if(std::fabs(walls_[1].a - laser_offset_) > M_PI_4)
+            walls_[1].r = 0; // dont update
         //std::sort(walls_.begin(), walls_.end(), [](const WallModel& lhs, const WallModel& rhs){ return lhs.a < rhs.a;});
     }
 

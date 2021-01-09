@@ -97,6 +97,8 @@ namespace turtlebot_maze {
                     pid_->Reset(ros::Time::now().toSec());
                     update_walls();
                     last_wall_update_ = ros::Time::now(); // TODO: put this in the update_walls function!!!
+                    last_left_range_ = left_range_;
+                    last_right_range_ = right_range_;
                 }
                 geometry_msgs::Twist move_cmd;
                 move_cmd.linear.x = 0.2;
@@ -106,22 +108,29 @@ namespace turtlebot_maze {
                     ROS_INFO("HEADING ERROR %f", heading_error_);
                     heading_error_ = 0;
                 }
-                // robot traveling in positive x direction
-                double test_dp = stable_desired_position(true, 1); // TODO: dont call it twice
-                double pos_fb = current_pose_.p.y;
-                int error_sign = 1; // TODO: make error wrt any line rather than 4 cardinal directions
-                if(std::fabs(std::fabs(current_pose_.h) - M_PI) < M_PI_4){ // robot traveling in negative x direction
-                    test_dp = stable_desired_position(true, -1);
+
+                double pos_fb = 0, test_dp = 0;
+                int error_sign = 0; // TODO: make error wrt any line rather than 4 cardinal directions
+                if(std::fabs(current_pose_.h) < M_PI_4){ // robot traveling in positive x direction
+                    error_sign = 1;
+                    test_dp = stable_desired_position(true, error_sign);
+                    pos_fb = current_pose_.p.y;
+                }
+                else if(std::fabs(std::fabs(current_pose_.h) - M_PI) < M_PI_4){ // robot traveling in negative x direction
+                    error_sign = -1;
+                    test_dp = stable_desired_position(true, error_sign);
                     pos_fb = current_pose_.p.y;
                     //ROS_INFO("POSITION ERROR -X %f %f", test_dp, pos_fb);
                 }
-                if(std::fabs(current_pose_.h - M_PI_2) < M_PI_4){ // robot traveling in positive y direction
-                    test_dp = stable_desired_position(false, -1);
+                else if(std::fabs(current_pose_.h - M_PI_2) < M_PI_4){ // robot traveling in positive y direction
+                    error_sign = -1;
+                    test_dp = stable_desired_position(false, error_sign);
                     pos_fb = current_pose_.p.x;
                     //ROS_INFO("POSITION ERROR +Y %f %f", test_dp, pos_fb);
                 }
-                if(std::fabs(current_pose_.h + M_PI_2) < M_PI_4){ // robot traveling in negative y direction
-                    test_dp = stable_desired_position(false, 1);
+                else if(std::fabs(current_pose_.h + M_PI_2) < M_PI_4){ // robot traveling in negative y direction
+                    error_sign = 1;
+                    test_dp = stable_desired_position(false, error_sign);
                     pos_fb = current_pose_.p.x;
                     //ROS_INFO("POSITION ERROR -Y %f %f", test_dp, pos_fb);
                 }
@@ -154,7 +163,7 @@ namespace turtlebot_maze {
                     last_wall_update_ = ros::Time::now();
                 }
 
-                if(center_range_ < 0.8){
+                if(center_range_ < 0.8 || left_range_ - last_left_range_ > 1.0 || right_range_ - last_right_range_ > 1.0){
                     stop();
                     current_state_ = States::INTERSECTION;
                     pid_->Reset(ros::Time::now().toSec());
@@ -163,6 +172,8 @@ namespace turtlebot_maze {
                     stable_desired_heading(); // clear the static variables
                     stable_desired_position(false, 0);
                 }
+                last_left_range_ = left_range_;
+                last_right_range_ = right_range_;
                 /*if(left_range_ > 1.2 * corridor_max_wall_dist_ ||
                    center_range_ < corridor_max_wall_dist_ ||
                    right_range_ > 1.2 * corridor_max_wall_dist_){
@@ -209,7 +220,8 @@ namespace turtlebot_maze {
                 }
 
                 rotate_angle(angle_to_rotate);
-                drive_straight(1.0);
+                // drive forward until in corridor
+                drive_straight(0.8);
                 current_state_ = States::CORRIDOR;
                 break;
             }
@@ -373,6 +385,8 @@ namespace turtlebot_maze {
         ph_->AddPoint(current_pose_.p);
         //ph_->PrintPoints();
 
+
+
         ROS_INFO("Pose: x %f y %f h %f", current_pose_.p.x, current_pose_.p.y, current_pose_.h);
         wall_detect_record_ << current_pose_.p.x << "," << current_pose_.p.y << "," << current_pose_.h << ",";
         /*int cc = 0;
@@ -469,8 +483,9 @@ namespace turtlebot_maze {
             }
             if(right_stable_count == 3){
                 if(AngleDifference(last_right_wall_est, wall_estimates_[0].a) > 0.1){
-                    right_stable_count = 0;
+                    //right_stable_count = 0;
                 }else{
+                    //ROS_INFO("HEADING RIGHT WALL %f", WrapAngle(last_right_wall_est + M_PI_2));
                     return last_right_wall_est + M_PI_2;
                 }
             }
@@ -487,8 +502,9 @@ namespace turtlebot_maze {
             }
             if(left_stable_count == 3){
                 if(AngleDifference(last_left_wall_est, wall_estimates_[1].a) > 0.1){
-                    left_stable_count = 0;
+                    //left_stable_count = 0;
                 }else{
+                    //ROS_INFO("HEADING LEFT WALL %f", WrapAngle(last_left_wall_est - M_PI_2));
                     return last_left_wall_est - M_PI_2;
                 }
             }
@@ -520,8 +536,10 @@ namespace turtlebot_maze {
                     ++right_stable_count;
                 last_right_point = current_right_point;
             }
-            if(right_stable_count == 3 && std::fabs(last_right_point - current_right_point) > 0.1)
-                right_stable_count = 0;
+            if(right_stable_count == 3 && std::fabs(last_right_point - current_right_point) > 0.1){
+
+            }
+                //right_stable_count = 0;
         }else{
             last_right_point = 0;
             right_stable_count = 0;
@@ -533,8 +551,10 @@ namespace turtlebot_maze {
                     ++left_stable_count;
                 last_left_point = current_left_point;
             }
-            if(left_stable_count == 3 && std::fabs(last_left_point - current_left_point) > 0.1)
-                left_stable_count = 0;
+            if(left_stable_count == 3 && std::fabs(last_left_point - current_left_point) > 0.1){
+
+            }
+                //left_stable_count = 0;
         }else{
             last_left_point = 0;
             left_stable_count = 0;
@@ -543,7 +563,7 @@ namespace turtlebot_maze {
         int wall_choice = 0; // -1 for left, 1 for right, 0 for neither
         if(left_stable_count == 3 && right_stable_count == 3){
             if(std::fabs(last_left_point - last_right_point) < 2.0) { // you're in a corridor
-                ROS_INFO("CORRIDOR CENTERING");
+                ROS_INFO("CORRIDOR CENTERING %f", (last_left_point + last_right_point)/2 - current_pose_point);
                 return (last_left_point + last_right_point) / 2;
             }
             // otherwise, go close to whichever wall robot is already nearest to
@@ -554,11 +574,11 @@ namespace turtlebot_maze {
         }
 
         if(wall_choice == 1 || (right_stable_count == 3 && left_stable_count < 3)){
-            ROS_INFO("HUG RIGHT WALL");
+            ROS_INFO("HUG RIGHT WALL %f %f %f %d", last_right_point, current_pose_point, last_right_point + error_sign*0.75 - current_pose_point, error_sign);
             return last_right_point + error_sign * 0.75;
         }
         if(wall_choice == -1 || (left_stable_count == 3 && right_stable_count < 3)){
-            ROS_INFO("HUG LEFT WALL");
+            ROS_INFO("HUG LEFT WALL %f %f %f %d", last_left_point, current_pose_point, last_left_point - error_sign*0.75 - current_pose_point, error_sign);
             return last_left_point - error_sign * 0.75;
         }
 
