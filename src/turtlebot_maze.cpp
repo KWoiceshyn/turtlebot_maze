@@ -195,23 +195,35 @@ namespace turtlebot_maze {
                  // TODO: control this drive straight to the last wall
                 ros::spinOnce();
                 //update_walls();
+
                 // check exits
-                std::vector<int> open_exits = check_open_exits();
+                std::vector<int> open_exits(3);
+                // TODO: perhaps use a median of adjacent ranges rather than just one
+                open_exits[0] = left_range_ > 1.5 * corridor_max_wall_dist_ ? 1 : 0;
+                open_exits[1] = center_range_ > 2.0 * corridor_max_wall_dist_ ? 1 : 0;
+                open_exits[2] = right_range_ > 1.5 * corridor_max_wall_dist_ ? 1 : 0;
+                ROS_INFO("Open exits: L %d C %d R %d", open_exits[0], open_exits[1], open_exits[2]);
 
                 double angle_to_rotate = 0.0;
                 if (std::any_of(open_exits.begin(), open_exits.end(), [](int a) { return a != 0; })) {
-                    // draw randomly
-                    int draw = rand() % 3;
-                    while (open_exits[draw] == 0)
-                        draw = rand() % 3;
-                    if (draw == 0){
+
+                    std::vector<int> unvisited_exits = check_unvisited_exits(open_exits);
+                    ROS_INFO("Unvisited exits: L %d C %d R %d", unvisited_exits[0], unvisited_exits[1], unvisited_exits[2]);
+                    if(std::none_of(unvisited_exits.begin(), unvisited_exits.end(), [](int a) { return a == 1; })){
+                        // if all are already visited, choose any open exit
+                        unvisited_exits = open_exits;
+                    }
+                    // choose center first, then left, then right
+                    if(unvisited_exits[1] == 1){
+                        ROS_INFO("Chose center");
+                        angle_to_rotate = 0;
+                    }
+                    else if(unvisited_exits[0] == 1){
                         angle_to_rotate = M_PI_2;
                         ROS_INFO("Chose left");
-                    } else if (draw == 2){
+                    }else if(unvisited_exits[2] == 1){
                         angle_to_rotate = -M_PI_2;
                         ROS_INFO("Chose right");
-                    }else{
-                        ROS_INFO("Chose center");
                     }
 
                 } else {
@@ -418,42 +430,39 @@ namespace turtlebot_maze {
         }*/
     }
 
-    std::vector<int> TurtleBotMaze::check_open_exits() {
-        std::vector<int> open_exits(3);
-        // TODO: perhaps use a median of adjacent ranges rather than just one
-        open_exits[0] = left_range_ > corridor_max_wall_dist_ ? 1 : 0;
-        open_exits[1] = center_range_ > 2.0 * corridor_max_wall_dist_ ? 1 : 0;
-        open_exits[2] = right_range_ > corridor_max_wall_dist_ ? 1 : 0;
-        ROS_INFO("Open exits: L %d C %d R %d", open_exits[0], open_exits[1], open_exits[2]);
+    std::vector<int> TurtleBotMaze::check_unvisited_exits(const std::vector<int> &open_exits){
+
         // TODO: how to check for escaped state?
 
+        std::vector<int> unvisited_exits(3, 0);
+
         // check if open exits already visited
-        ROS_INFO("Pose: x %f y %f h %f", current_pose_.p.x, current_pose_.p.y, current_pose_.h);
+        //ROS_INFO("Pose: x %f y %f h %f", current_pose_.p.x, current_pose_.p.y, current_pose_.h);
         if (open_exits[0]) {
             Point ll = TransformToGlobal({-1.0, 2.5}, current_pose_);
             Point ur = TransformToGlobal({1.0, 0.5}, current_pose_);
-            if (ph_->AnyInRectangle(ll, ur)) {
-                open_exits[0] = 0;
-                ROS_INFO("Left exit already visited");
+            if (!ph_->AnyInRectangle(ll, ur)) {
+                unvisited_exits[0] = 1;
+                //ROS_INFO("Left exit already visited");
             }
         }
         if (open_exits[1]) {
             Point ll = TransformToGlobal({0.5, 1.0}, current_pose_);
             Point ur = TransformToGlobal({2.5, -1.0}, current_pose_);
-            if (ph_->AnyInRectangle(ll, ur)) {
-                open_exits[1] = 0;
-                ROS_INFO("Center exit already visited");
+            if (!ph_->AnyInRectangle(ll, ur)) {
+                unvisited_exits[1] = 1;
+                //ROS_INFO("Center exit already visited");
             }
         }
         if (open_exits[2]) {
             Point ll = TransformToGlobal({-1.0, -0.5}, current_pose_);
             Point ur = TransformToGlobal({1.0, -2.5}, current_pose_);
-            if (ph_->AnyInRectangle(ll, ur)) {
-                open_exits[2] = 0;
-                ROS_INFO("Right exit already visited");
+            if (!ph_->AnyInRectangle(ll, ur)) {
+                unvisited_exits[2] = 1;
+                //ROS_INFO("Right exit already visited");
             }
         }
-        return open_exits;
+        return unvisited_exits;
     }
 
     bool TurtleBotMaze::stable_endpoint_estimate() { // checks both left wall and right wall endpoint estimates are consistent

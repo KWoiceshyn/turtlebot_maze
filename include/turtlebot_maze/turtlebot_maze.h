@@ -53,7 +53,7 @@ namespace turtlebot_maze {
 
         void update_walls();
 
-        std::vector<int> check_open_exits();
+        std::vector<int> check_unvisited_exits(const std::vector<int>& open_exits);
 
         bool stable_endpoint_estimate();
 
