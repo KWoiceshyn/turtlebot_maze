@@ -210,20 +210,33 @@ namespace turtlebot_maze {
                     std::vector<int> unvisited_exits = check_unvisited_exits(open_exits);
                     ROS_INFO("Unvisited exits: L %d C %d R %d", unvisited_exits[0], unvisited_exits[1], unvisited_exits[2]);
                     if(std::none_of(unvisited_exits.begin(), unvisited_exits.end(), [](int a) { return a == 1; })){
-                        // if all are already visited, choose any open exit
-                        unvisited_exits = open_exits;
-                    }
-                    // choose center first, then left, then right
-                    if(unvisited_exits[1] == 1){
-                        ROS_INFO("Chose center");
-                        angle_to_rotate = 0;
-                    }
-                    else if(unvisited_exits[0] == 1){
-                        angle_to_rotate = M_PI_2;
-                        ROS_INFO("Chose left");
-                    }else if(unvisited_exits[2] == 1){
-                        angle_to_rotate = -M_PI_2;
-                        ROS_INFO("Chose right");
+                        // if all are already visited, choose left, center, right based on openness
+                        if(open_exits[0] == 1){
+                            angle_to_rotate = M_PI_2;
+                            ROS_INFO("Chose left already visited");
+                        }
+                        else if(open_exits[1] == 1){
+                            angle_to_rotate = 0;
+                            ROS_INFO("Chose center already visited");
+                        }
+                        else if(open_exits[2] == 1){
+                            angle_to_rotate = -M_PI_2;
+                            ROS_INFO("Chose right already visited");
+                        }
+                    }else{
+                        // choose center first, then left, then right
+                        if(unvisited_exits[1] == 1){
+                            ROS_INFO("Chose center");
+                            angle_to_rotate = 0;
+                        }
+                        else if(unvisited_exits[0] == 1){
+                            angle_to_rotate = M_PI_2;
+                            ROS_INFO("Chose left");
+                        }
+                        else if(unvisited_exits[2] == 1){
+                            angle_to_rotate = -M_PI_2;
+                            ROS_INFO("Chose right");
+                        }
                     }
 
                 } else {
@@ -234,13 +247,18 @@ namespace turtlebot_maze {
                 rotate_angle(angle_to_rotate);
                 // drive forward until in corridor
                 drive_straight(0.8);
-                current_state_ = States::CORRIDOR;
+                update_walls();
+                if(wall_estimates_[0].r < 1e-3 && wall_estimates_[1].r < 1e-3 && center_range_ > 5.0)
+                    current_state_ = States::ESCAPED;
+                else
+                    current_state_ = States::CORRIDOR;
                 break;
             }
 
             case States::ESCAPED:{
                 ROS_INFO("Robot escaped maze!");
                 stop();
+                last_state_ = current_state_;
                 break;
             }
         }
@@ -583,14 +601,18 @@ namespace turtlebot_maze {
         }
 
         if(wall_choice == 1 || (right_stable_count == 3 && left_stable_count < 3)){
-            ROS_INFO("HUG RIGHT WALL %f %f %f %d", last_right_point, current_pose_point, last_right_point + error_sign*0.75 - current_pose_point, error_sign);
-            return last_right_point + error_sign * 0.75;
+            if(std::fabs(last_right_point - current_pose_point) < 1.2){
+                ROS_INFO("HUG RIGHT WALL %f %f %f %d", last_right_point, current_pose_point, last_right_point + error_sign*0.75 - current_pose_point, error_sign);
+                return last_right_point + error_sign * 0.75;
+            }
         }
-        if(wall_choice == -1 || (left_stable_count == 3 && right_stable_count < 3)){
-            ROS_INFO("HUG LEFT WALL %f %f %f %d", last_left_point, current_pose_point, last_left_point - error_sign*0.75 - current_pose_point, error_sign);
-            return last_left_point - error_sign * 0.75;
+        if(wall_choice == -1 || (left_stable_count == 3 && right_stable_count < 3)) {
+            if (std::fabs(last_left_point - current_pose_point) < 1.2) {
+                ROS_INFO("HUG LEFT WALL %f %f %f %d", last_left_point, current_pose_point,
+                         last_left_point - error_sign * 0.75 - current_pose_point, error_sign);
+                return last_left_point - error_sign * 0.75;
+            }
         }
-
         return 0.0;
 
     }
@@ -604,6 +626,10 @@ namespace turtlebot_maze {
         wall_estimates_[1].a = 0;
         wall_estimates_[1].p_c = Point();
         wall_estimates_[1].p_e = Point();
+    }
+
+    TurtleBotMaze::States TurtleBotMaze::get_state(){
+        return last_state_;
     }
 
 } // turtlebot_maze

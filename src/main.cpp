@@ -30,6 +30,8 @@ int main(int argc, char **argv)
     while(ros::ok()){
         ros::spinOnce();
         tb_maze.state_machine();
+        if(tb_maze.get_state() == turtlebot_maze::TurtleBotMaze::States::ESCAPED)
+            break;
         tb_maze.loop_rate_->sleep();
     }
 

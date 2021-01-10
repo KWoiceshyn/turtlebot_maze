@@ -42,14 +42,16 @@ namespace turtlebot_maze {
 
         ros::Rate *loop_rate_;
 
-    private:
-
         enum class States{
             INITIALIZE,
             CORRIDOR,
             INTERSECTION,
             ESCAPED
         };
+
+        States get_state();
+
+    private:
 
         void update_walls();
 
