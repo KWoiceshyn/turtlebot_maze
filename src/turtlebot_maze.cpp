@@ -615,14 +615,8 @@ namespace turtlebot_maze {
     }
 
     void TurtleBotMaze::resetWallEstimates() {
-        wall_estimates_[0].r = 0;
-        wall_estimates_[0].a = 0;
-        wall_estimates_[0].p_c = Point();
-        wall_estimates_[0].p_e = Point();
-        wall_estimates_[1].r = 0;
-        wall_estimates_[1].a = 0;
-        wall_estimates_[1].p_c = Point();
-        wall_estimates_[1].p_e = Point();
+        wall_estimates_[0] = WallModel();
+        wall_estimates_[1] = WallModel();
     }
 
 } // namespace turtlebot_maze

@@ -15,20 +15,24 @@ namespace turtlebot_maze{
 
         WallDetection(double max_range);
 
+        // update wall model estimates from most recent laser scan
         void updateWalls(const Pose& pose, const std::vector<double>& ranges, const std::vector<double>& angles);
 
-        bool clearedWall(const Pose& pose, double& last_delta);
-
+        // copy wall estimates to a requestor, using median values of recent endpoint estimates for reliability
         void getWalls(WallModel& left_wall, WallModel& right_wall);
 
+        // clear values stored to compute medians for stable estimates
         void resetMedians();
 
     private:
 
+        // fill the Hough accumulator using the angles and ranges from laser scan
         void fillAccumulator(const std::vector<double>& ranges, const std::vector<double>& angles);
 
+        // find the peaks (valid wall models) in the Hough accumulator
         void findPeaks();
 
+        // find the end points (e.g. corners) of the detected walls
         void findEndPoints(const std::vector<double> &ranges, const std::vector<double> &angles);
 
         std::vector<std::vector<int>> accumulator_; // Hough transform accumulator for line detection

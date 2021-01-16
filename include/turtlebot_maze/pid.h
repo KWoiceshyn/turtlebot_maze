@@ -1,7 +1,6 @@
 #ifndef TURTLEBOT_MAZE_PID_H
 #define TURTLEBOT_MAZE_PID_H
 
-//#include <iostream>
 
 namespace turtlebot_maze {
 
@@ -25,7 +24,7 @@ namespace turtlebot_maze {
 
             double error = sp - fb;
             // TODO: maybe need to filter the d-term?
-            double d_error = delta_t > 0.05 ? (error - last_error_) / delta_t : 0.0;
+            double d_error = delta_t > 1e-3 ? (error - last_error_) / delta_t : 0.0;
             i_term_ += error * delta_t;
             i_term_ = std::max(std::min(i_term_, i_term_max_), -i_term_max_);
 
@@ -34,19 +33,17 @@ namespace turtlebot_maze {
             return p_gain_ * error + i_gain_ * i_term_ + d_gain_ * d_error;
         }
 
+        // use heading error in lieu of derivative term
         double runControlHE(double error, double t_now, double heading_error) {
 
             double delta_t = t_now - t_last_;
 
-            //double error = sp - fb;
             i_term_ += error * delta_t;
             i_term_ = std::max(std::min(i_term_, i_term_max_), -i_term_max_);
 
             t_last_ = t_now;
             last_error_ = error;
-            //std::cout << "p " << p_gain_ * error << " i " << i_gain_ * i_term_ << " d " << d_gain_ * heading_error <<"\n";
             return p_gain_ * error + i_gain_ * i_term_ + d_gain_ * heading_error;
-
         }
 
         void reset(double t_now){
@@ -63,7 +60,7 @@ namespace turtlebot_maze {
         const double p_gain_;
         const double i_gain_;
         const double d_gain_;
-        const double i_term_max_;
+        const double i_term_max_; // integral saturation
     };
 
 } // namespace turtlebot_maze
