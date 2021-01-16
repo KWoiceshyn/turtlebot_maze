@@ -1,9 +1,8 @@
 #ifndef TURTLEBOT_MAZE_TURTLEBOT_MAZE_H
 #define TURTLEBOT_MAZE_TURTLEBOT_MAZE_H
 
-#include "wall_detection.h"
-#include "position_history.h"
-#include "pid.h"
+#include <vector>
+#include <fstream>
 
 #include <ros/ros.h>
 #include <std_msgs/String.h>
@@ -13,8 +12,9 @@
 #include <gazebo_msgs/SetModelState.h>
 #include <tf/transform_datatypes.h>
 
-#include <vector>
-#include <fstream>
+#include "turtlebot_maze/wall_detection.h"
+#include "turtlebot_maze/position_history.h"
+#include "turtlebot_maze/pid.h"
 
 namespace turtlebot_maze {
 
@@ -26,21 +26,19 @@ namespace turtlebot_maze {
 
         void init();
 
-        void state_machine();
+        void stateMachine();
 
-        void follow_wall();
+        void followWall();
 
         void stop();
 
-        void drive_straight(double distance_in);
+        void driveStraight(double distance_in);
 
-        void rotate_angle(double angle_in);
+        void rotateAngle(double angle_in);
 
-        void callback_laser(const sensor_msgs::LaserScan &msg);
-
-        void callback_pose(const nav_msgs::Odometry & msg);
-
-        ros::Rate *loop_rate_;
+        void sleep(){
+            loop_rate_->sleep();
+        }
 
         enum class States{
             INITIALIZE,
@@ -49,32 +47,29 @@ namespace turtlebot_maze {
             ESCAPED
         };
 
-        States get_state();
+        States getState() const{
+            return last_state_;
+        }
 
     private:
+        void updateWalls();
 
-        void update_walls();
+        std::vector<int> checkUnvisitedExits(const std::vector<int>& open_exits);
 
-        std::vector<int> check_unvisited_exits(const std::vector<int>& open_exits);
+        bool stableEndpointEstimate();
 
-        bool stable_endpoint_estimate();
+        double stableDesiredHeading();
 
-        double stable_desired_heading();
+        double stableDesiredPosition(bool use_x, int error_sign);
 
-        double stable_desired_position(bool use_x, int error_sign);
+        void resetWallEstimates();
 
-        void reset_wall_estimates();
+        double angleToNearestCompassPoint();
 
-        double angle_to_nearest_compass_point();
+        void callbackLaser(const sensor_msgs::LaserScan &msg);
 
-        const size_t right_laser_idx_ = 0;
-        const size_t center_laser_idx_ = 179;
-        const size_t lf_laser_idx_ = 320; //20 deg forward from left laser
-        const size_t left_laser_idx_ = 359;
-        const size_t hokuyo_num_ranges_ = 360;
-        //const double k_ = 1.0;
-        const double desired_ratio_ = cos(0.349); //20 deg
-        const double corridor_max_wall_dist_ {1.0}; // max lateral distance to wall on either side to be in a corridor
+        void callbackPose(const nav_msgs::Odometry & msg);
+
         double heading_error_;
         double center_range_, left_range_, right_range_, last_left_range_, last_right_range_;
         double last_min_distance_;
@@ -90,8 +85,6 @@ namespace turtlebot_maze {
         std::ofstream wall_detect_record_;
 
         std::vector<WallModel> wall_estimates_;
-        //std::vector<WallModel> center_walls_;
-        //std::vector<WallModel> left_walls_;
 
         ros::NodeHandle nh_;
         ros::Publisher vel_publisher_;
@@ -99,13 +92,22 @@ namespace turtlebot_maze {
         ros::Subscriber pose_subscriber_;
 
         ros::Time last_wall_update_;
+        ros::Rate *loop_rate_;
 
         ros::ServiceClient teleporter_;
         sensor_msgs::LaserScan current_scan_;
         nav_msgs::Odometry current_odom_;
+
+        const size_t right_laser_idx_ {0};
+        const size_t center_laser_idx_ {179};
+        const size_t lf_laser_idx_ {320}; //20 deg forward from left laser
+        const size_t left_laser_idx_ {359};
+        const size_t hokuyo_num_ranges_ {360};
+        const double desired_ratio_ {cos(0.349)}; //20 deg
+        const double corridor_max_wall_dist_ {1.0}; // max lateral distance to wall on either side to be in a corridor
     };
 
-} // turtlebot_maze
+} // namespace turtlebot_maze
 
 
 #endif //TURTLEBOT_MAZE_TURTLEBOT_MAZE_H

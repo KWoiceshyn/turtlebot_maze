@@ -1,10 +1,11 @@
 #ifndef TURTLEBOT_MAZE_WALL_DETECTION_H
 #define TURTLEBOT_MAZE_WALL_DETECTION_H
 
-#include "geometric_utilities.h"
-
 #include <vector>
-#include <cmath>
+#include <cassert>
+#include <algorithm>
+
+#include "turtlebot_maze/geometric_utilities.h"
 
 namespace turtlebot_maze{
 
@@ -14,25 +15,21 @@ namespace turtlebot_maze{
 
         WallDetection(double max_range);
 
-        void UpdateWalls(const Pose& pose, const std::vector<double>& ranges, const std::vector<double>& angles);
+        void updateWalls(const Pose& pose, const std::vector<double>& ranges, const std::vector<double>& angles);
 
-        double DistToLeftWall(const Pose& pose);
+        bool clearedWall(const Pose& pose, double& last_delta);
 
-        double HeadingError(const Pose& pose);
+        void getWalls(WallModel& left_wall, WallModel& right_wall);
 
-        bool ClearedWall(const Pose& pose, double& last_delta);
-
-        void GetWalls(WallModel& left_wall, WallModel& right_wall);
-
-        void ResetMedians();
+        void resetMedians();
 
     private:
 
-        void FillAccumulator(const std::vector<double>& ranges, const std::vector<double>& angles);
+        void fillAccumulator(const std::vector<double>& ranges, const std::vector<double>& angles);
 
-        void FindPeaks();
+        void findPeaks();
 
-        void FindEndPoints(const std::vector<double> &ranges, const std::vector<double> &angles);
+        void findEndPoints(const std::vector<double> &ranges, const std::vector<double> &angles);
 
         std::vector<std::vector<int>> accumulator_; // Hough transform accumulator for line detection
 
@@ -55,6 +52,6 @@ namespace turtlebot_maze{
 
     };
 
-} // turtlebot_maze
+} // namespace turtlebot_maze
 
 #endif //TURTLEBOT_MAZE_WALL_DETECTION_H

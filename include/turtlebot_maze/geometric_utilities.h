@@ -35,17 +35,36 @@ namespace turtlebot_maze {
         Point p_e; // global x-y coordinate of wall point that is furthest from robot when wall is detected
     };
 
-    double Distance(const Point& a, const Point& b);
+    double distance(const Point& a, const Point& b){
+        return sqrt(std::pow(a.x - b.x, 2.0) + std::pow(a.y - b.y, 2.0));
+    }
 
     // rotate and translate a point in the robot frame to the global frame
-    Point TransformToGlobal(const Point& p_r, const Pose& pose);
+    Point transformToGlobal(const Point& p_r, const Pose& pose){
+        Point p_i;
+        double laser_heading = 0.0; // laser faces forward but its x-axis has been defined at range 0
+        p_i.x = p_r.x * cos(pose.h - laser_heading) - p_r.y * sin(pose.h - laser_heading) + pose.p.x;
+        p_i.y = p_r.x * sin(pose.h - laser_heading) + p_r.y * cos(pose.h - laser_heading) + pose.p.y;
+        return p_i;
+    }
 
     // constrain angle to [-pi, pi]
-    double WrapAngle(double angle);
+    double wrapAngle(double angle){
+        while(angle < -M_PI)
+            angle += 2.0*M_PI;
+        while(angle > M_PI)
+            angle -= 2.0*M_PI;
+        return angle;
+    }
 
     // handle the discontinuity at +- pi when subtracting b from a
-    double AngleDifference(double a, double b);
+    double angleDifference(double a, double b){
+        double result = a - b;
+        if(result > M_PI) result -= 2*M_PI;
+        if(result < -M_PI) result += 2*M_PI;
+        return result;
+    }
 
-} // turtlebot_maze
+} // namespace turtlebot_maze
 
 #endif //TURTLEBOT_MAZE_GEOMETRIC_UTILITIES_H

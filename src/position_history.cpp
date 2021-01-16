@@ -1,23 +1,24 @@
+#include "turtlebot_maze/position_history.h"
+
 #include <iostream>
-#include "../include/turtlebot_maze/position_history.h"
 
 namespace turtlebot_maze{
     
-    void PositionHistory::AddPoint(const Point& pt){
-        if(!AnyInRadius(pt, 0.5))
+    void PositionHistory::addPoint(const Point& pt){
+        if(!anyInRadius(pt, 0.5))
             visited_.insert(std::pair<double, Point>(pt.x, pt));
     }
 
-    bool PositionHistory::AnyInRectangle(const turtlebot_maze::Point &upper, const turtlebot_maze::Point &lower) {
+    bool PositionHistory::anyInRectangle(const turtlebot_maze::Point &upper, const turtlebot_maze::Point &lower) {
 
         double upper_bound = std::max(upper.y, lower.y);
         double lower_bound = std::min(upper.y, lower.y);
         double right_bound = std::max(upper.x, lower.x);
         double left_bound = std::min(upper.x, lower.x);
-        return AnyInRectangleHelper(left_bound, right_bound, lower_bound, upper_bound);
+        return anyInRectangleHelper(left_bound, right_bound, lower_bound, upper_bound);
     }
 
-    bool PositionHistory::AnyInRectangleHelper(double left, double right, double lower, double upper){
+    bool PositionHistory::anyInRectangleHelper(double left, double right, double lower, double upper){
 
         std::cout << "Checking rect: L " << left << " R " << right << " L " << lower << " U " << upper << "\n";
         auto it_left = visited_.lower_bound(left);
@@ -32,7 +33,7 @@ namespace turtlebot_maze{
         return false;
     }
 
-    bool PositionHistory::AnyInRadius(const turtlebot_maze::Point &point, double radius) {
+    bool PositionHistory::anyInRadius(const turtlebot_maze::Point &point, double radius) {
         auto it_left = visited_.lower_bound(point.x - radius);
         auto it_right = visited_.upper_bound(point.x + radius);
 
@@ -46,11 +47,11 @@ namespace turtlebot_maze{
         return false;
     }
 
-    void PositionHistory::PrintPoints() {
+    void PositionHistory::printPoints() {
         std::cout<<"Visited: ";
         for(const auto& m : visited_){
             std::cout << m.second.x << " " << m.second.y << "\n";
         }
     }
     
-}
+} // namespace turtlebot_maze

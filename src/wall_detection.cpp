@@ -1,7 +1,6 @@
-#include <cassert>
+#include "turtlebot_maze/wall_detection.h"
+
 #include <iostream>
-#include <algorithm>
-#include "../include/turtlebot_maze/wall_detection.h"
 
 namespace turtlebot_maze{
 
@@ -19,7 +18,7 @@ namespace turtlebot_maze{
             col.resize(grid_size_ + 2, 0);
     }
 
-    void WallDetection::UpdateWalls(const turtlebot_maze::Pose &pose, const std::vector<double> &ranges,
+    void WallDetection::updateWalls(const turtlebot_maze::Pose &pose, const std::vector<double> &ranges,
                                     const std::vector<double> &angles) {
         // clear out previous wall models
         walls_.clear();
@@ -29,13 +28,13 @@ namespace turtlebot_maze{
             std::fill(col.begin(), col.end(), 0);
 
         // fill the Hough accumulator using the angles and ranges from laser scan
-        FillAccumulator(ranges, angles);
+        fillAccumulator(ranges, angles);
 
         // find the peaks (valid Wall models) in the Hough accumulator
-        FindPeaks();
+        findPeaks();
 
         // find the end points (e.g. corners) of the detected walls
-        FindEndPoints(ranges, angles);
+        findEndPoints(ranges, angles);
 
         // choose wall endpoints based on proximity to robot pose
         /*for(auto& wall : walls_){
@@ -47,9 +46,9 @@ namespace turtlebot_maze{
 
         // convert wall models into the global frame
         for(auto i = 0; i < 2; ++i){
-            walls_[i].p_c = TransformToGlobal(walls_[i].p_c, pose);
+            walls_[i].p_c = transformToGlobal(walls_[i].p_c, pose);
             if(std::fabs(walls_[i].p_e.y) > 0.1){ // TODO: use nan instead of zero check
-                walls_[i].p_e = TransformToGlobal(walls_[i].p_e, pose);
+                walls_[i].p_e = transformToGlobal(walls_[i].p_e, pose);
                 if(i == 0){
                     right_wall_xe_.push_back(walls_[i].p_e.x);
                     right_wall_ye_.push_back(walls_[i].p_e.y);
@@ -58,14 +57,14 @@ namespace turtlebot_maze{
                     left_wall_ye_.push_back(walls_[i].p_e.y);
                 }
             }
-            walls_[i].a = WrapAngle(walls_[i].a + pose.h);
+            walls_[i].a = wrapAngle(walls_[i].a + pose.h);
             //std::cout << "transformed a "<< wall.a <<" r "<<wall.r<<" x0 "<<wall.p_c.x<<" y0 "<<wall.p_c.y<<" x1 "<<wall.p_e.x<<" y1 "<<wall.p_e.y<<std::endl;
         }
 
     }
 
 
-    void WallDetection::FillAccumulator(const std::vector<double> &ranges, const std::vector<double> &angles) {
+    void WallDetection::fillAccumulator(const std::vector<double> &ranges, const std::vector<double> &angles) {
 
         assert(ranges.size() == angles.size());
 
@@ -82,7 +81,7 @@ namespace turtlebot_maze{
         }
     }
 
-    void WallDetection::FindPeaks() {
+    void WallDetection::findPeaks() {
 
         int count = 0;
         std::vector<Point> record;
@@ -130,7 +129,7 @@ namespace turtlebot_maze{
         //std::sort(walls_.begin(), walls_.end(), [](const WallModel& lhs, const WallModel& rhs){ return lhs.a < rhs.a;});
     }
 
-    void WallDetection::FindEndPoints(const std::vector<double> &ranges, const std::vector<double> &angles) {
+    void WallDetection::findEndPoints(const std::vector<double> &ranges, const std::vector<double> &angles) {
 
         for(auto ii = 0; ii < 2; ++ii){
 
@@ -179,7 +178,7 @@ namespace turtlebot_maze{
         }
     }
 
-    void WallDetection::GetWalls(turtlebot_maze::WallModel &left_wall, turtlebot_maze::WallModel &right_wall) {
+    void WallDetection::getWalls(turtlebot_maze::WallModel &left_wall, turtlebot_maze::WallModel &right_wall) {
         right_wall.r = walls_[0].r; right_wall.a = walls_[0].a;
         left_wall.r = walls_[1].r; left_wall.a = walls_[1].a;
         // TODO: should r and a be median as well?
@@ -207,11 +206,11 @@ namespace turtlebot_maze{
         }
     }
 
-    void WallDetection::ResetMedians() {
+    void WallDetection::resetMedians() {
         left_wall_xe_.clear();
         left_wall_ye_.clear();
         right_wall_xe_.clear();
         right_wall_ye_.clear();
     }
 
-} // turtlebot_maze
+} // namespace turtlebot_maze

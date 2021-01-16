@@ -1,12 +1,6 @@
-#include "../include/turtlebot_maze/turtlebot_maze.h"
-//#include "../include/turtlebot_maze/position_history.h"
-//#include "../include/turtlebot_maze/geometric_utilities.h"
-//#include "../include/turtlebot_maze/wall_detection.h"
+#include "turtlebot_maze/turtlebot_maze.h"
 
 #include <csignal>
-#include <vector>
-#include <fstream>
-#include <sstream>
 #include <iostream>
 
 
@@ -21,18 +15,18 @@ using namespace turtlebot_maze;
 int main(int argc, char **argv)
 {
     ///////////////////////////////////////////////////////////////////////////////
-    ros::init(argc, argv, "turtlebot_maze", ros::init_options::NoSigintHandler);
+    ros::init(argc, argv, "turtlebot_maze_node", ros::init_options::NoSigintHandler);
     ros::NodeHandle nh;
     signal(SIGINT, mySigintHandler);
 
     TurtleBotMaze tb_maze(nh);
-    //tb_maze.follow_wall();
+    //tb_maze.followWall();
     while(ros::ok()){
         ros::spinOnce();
-        tb_maze.state_machine();
-        if(tb_maze.get_state() == turtlebot_maze::TurtleBotMaze::States::ESCAPED)
+        tb_maze.stateMachine();
+        if(tb_maze.getState() == turtlebot_maze::TurtleBotMaze::States::ESCAPED)
             break;
-        tb_maze.loop_rate_->sleep();
+        tb_maze.sleep();
     }
 
 

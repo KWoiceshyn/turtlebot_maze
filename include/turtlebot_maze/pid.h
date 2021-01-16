@@ -1,7 +1,7 @@
 #ifndef TURTLEBOT_MAZE_PID_H
 #define TURTLEBOT_MAZE_PID_H
 
-#include <iostream>
+//#include <iostream>
 
 namespace turtlebot_maze {
 
@@ -19,7 +19,7 @@ namespace turtlebot_maze {
 
         }
 
-        double RunControl(double sp, double fb, double t_now) {
+        double runControl(double sp, double fb, double t_now) {
 
             double delta_t = t_now - t_last_;
 
@@ -34,7 +34,7 @@ namespace turtlebot_maze {
             return p_gain_ * error + i_gain_ * i_term_ + d_gain_ * d_error;
         }
 
-        double RunControlHE(double error, double t_now, double heading_error) {
+        double runControlHE(double error, double t_now, double heading_error) {
 
             double delta_t = t_now - t_last_;
 
@@ -49,23 +49,23 @@ namespace turtlebot_maze {
 
         }
 
-        void Reset(double t_now){
+        void reset(double t_now){
             i_term_ = 0.0;
             t_last_ = t_now;
             last_error_ = 0.0;
         }
 
     private:
+        double i_term_;
+        double last_error_;
+        double t_last_;
+
         const double p_gain_;
         const double i_gain_;
         const double d_gain_;
         const double i_term_max_;
-
-        double i_term_;
-        double last_error_;
-        double t_last_;
     };
 
-} // turtlebot_maze
+} // namespace turtlebot_maze
 
 #endif //TURTLEBOT_MAZE_PID_H
