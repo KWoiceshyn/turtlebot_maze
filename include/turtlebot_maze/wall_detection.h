@@ -22,7 +22,9 @@ namespace turtlebot_maze{
 
         bool ClearedWall(const Pose& pose, double& last_delta);
 
-        const std::vector<WallModel>& GetWalls();
+        void GetWalls(WallModel& left_wall, WallModel& right_wall);
+
+        void ResetMedians();
 
     private:
 
@@ -36,10 +38,16 @@ namespace turtlebot_maze{
 
         std::vector<WallModel> walls_; // stored wall parameters
 
+        std::vector<double> left_wall_xe_; // track wall endpoint estimates to find median
+        std::vector<double> left_wall_ye_;
+        std::vector<double> right_wall_xe_;
+        std::vector<double> right_wall_ye_;
+
         const double laser_offset_ {M_PI_2}; // laser zeroth scan axis aligned with robot -y axis
 
         const double max_deviation_; // deviation from line model that signifies an endpoint
         const double max_range_diff_; // difference threshold between 2 adjacent ranges that indicates break in wall model
+        const double max_range_; // max range for reliable wall endpoint detection
         const double theta_inc_; // angle resolution in radians
         const int grid_size_; // size of square accumulator matrix
         const double r_inc_; // range (distance) resolution in meters

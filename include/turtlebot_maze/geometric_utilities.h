@@ -6,6 +6,12 @@
 namespace turtlebot_maze {
 
     struct Point{
+
+        Point(double xx = 0.0, double yy = 0.0){
+            x = xx;
+            y = yy;
+        }
+
         double x;
         double y;
     };
@@ -17,7 +23,7 @@ namespace turtlebot_maze {
 
     struct WallModel {
 
-        WallModel(double aa, double rr){
+        WallModel(double aa = 0.0, double rr = 0.0){
             a = aa;
             r = rr;
             p_c.x = 0; p_c.y = 0; p_e.x = 0; p_e.y = 0;
@@ -34,8 +40,11 @@ namespace turtlebot_maze {
     // rotate and translate a point in the robot frame to the global frame
     Point TransformToGlobal(const Point& p_r, const Pose& pose);
 
-    // constrain angle to
+    // constrain angle to [-pi, pi]
     double WrapAngle(double angle);
+
+    // handle the discontinuity at +- pi when subtracting b from a
+    double AngleDifference(double a, double b);
 
 } // turtlebot_maze
 
