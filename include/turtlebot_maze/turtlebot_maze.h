@@ -2,7 +2,6 @@
 #define TURTLEBOT_MAZE_TURTLEBOT_MAZE_H
 
 #include <vector>
-#include <fstream>
 
 #include <ros/ros.h>
 #include <std_msgs/String.h>
@@ -21,8 +20,6 @@ namespace turtlebot_maze {
     class TurtleBotMaze {
     public:
         explicit TurtleBotMaze(ros::NodeHandle &nh);
-
-        ~TurtleBotMaze();
 
         void init();
 
@@ -56,13 +53,25 @@ namespace turtlebot_maze {
 
         std::vector<int> checkUnvisitedExits(const std::vector<int>& open_exits);
 
+        // checks if both left wall and right wall endpoint estimates are consistent
         bool stableEndpointEstimate();
 
+        // return orientation of wall model if it is reliable, so that the robot can drive parallel to it
+        // if it is not reliable, return the current heading of the robot so that the controller ignores heading error
         double stableDesiredHeading();
 
-        double stableDesiredPosition(bool use_x, int error_sign);
+        double stableDesiredPosition(const Pose& pose);
 
         void resetWallEstimates();
+
+        enum class Directions{
+            POS_X,
+            NEG_X,
+            POS_Y,
+            NEG_Y
+        };
+
+        Directions nearestCompassPoint(double heading);
 
         double angleToNearestCompassPoint();
 
@@ -81,8 +90,6 @@ namespace turtlebot_maze {
         Pose current_pose_;
         States current_state_;
         States last_state_;
-
-        std::ofstream wall_detect_record_;
 
         std::vector<WallModel> wall_estimates_;
 
