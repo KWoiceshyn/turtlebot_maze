@@ -5,11 +5,9 @@ namespace turtlebot_maze {
     TurtleBotMaze::TurtleBotMaze(ros::NodeHandle &nh)
             : nh_{nh},
               loop_rate_{new ros::Rate(10)},
-              heading_error_{0},
               center_range_{1.0},
               current_state_{States::INITIALIZE},
-              last_state_{States::INITIALIZE},
-              last_min_distance_{1e3}
+              last_state_{States::INITIALIZE}
     {
         init();
         wd_ = std::make_unique<WallDetection>(4.0);
@@ -66,7 +64,7 @@ namespace turtlebot_maze {
         switch(current_state_){
 
             case States::INITIALIZE: {
-                updateWalls();
+                getUpdatedWalls();
                 // TODO: make below checks based on wall model
                 if (left_range_ < corridor_max_wall_dist_ &&
                     right_range_ < corridor_max_wall_dist_) {
@@ -80,82 +78,69 @@ namespace turtlebot_maze {
             }
 
             case States::CORRIDOR:{
+                static double last_left_range = 1e3, last_right_range = 1e3, last_min_distance = 1e3;
                 if(last_state_ != current_state_){
                     ROS_INFO("Entered Corridor state");
                     last_state_ = current_state_;
-                    pid_->reset(ros::Time::now().toSec());
-                    updateWalls();
-                    last_wall_update_ = ros::Time::now(); // TODO: put this in the update_walls function!!!
-                    last_left_range_ = left_range_;
-                    last_right_range_ = right_range_;
+                    getUpdatedWalls();
+                    last_left_range = left_range_;
+                    last_right_range = right_range_;
+                    last_min_distance = 1e3;
                 }
                 geometry_msgs::Twist move_cmd;
                 move_cmd.linear.x = 0.2;
-                heading_error_ = angleDifference(stableDesiredHeading(), current_pose_.h);
-                if(std::fabs(heading_error_) > M_PI_4){
+                double heading_error = angleDifference(stableDesiredHeading(), current_pose_.h);
+                if(std::fabs(heading_error) > M_PI_4){
                     // don't use heading error for control if it's very large; robot is not nicely oriented to wall
-                    ROS_INFO("HEADING ERROR %f", heading_error_);
-                    heading_error_ = 0.0;
+                    ROS_INFO("HEADING ERROR %f", heading_error);
+                    heading_error = 0.0;
                 }
 
                 // TODO: make error wrt any line rather than 4 cardinal directions?
                 double position_error = stableDesiredPosition(current_pose_);
-                move_cmd.angular.z = pid_->runControlHE(position_error, ros::Time::now().toSec(), heading_error_);
+                move_cmd.angular.z = pid_->runControlHE(position_error, ros::Time::now().toSec(), heading_error);
 
-                //ROS_INFO("Ang cmd: %f", move_cmd.angular.z);
                 vel_publisher_.publish(move_cmd);
                 if(ros::Time::now().toSec() - last_wall_update_.toSec() > 0.2){
-                    updateWalls(); // TODO: call the wd_ and ph_ directly here
+                    getUpdatedWalls();
                     if (stableEndpointEstimate()){
-                        ROS_INFO("STABLE ENDPOINT ESTIMATE");
+                        ROS_INFO("STABLE WALL ENDPOINT ESTIMATE");
                         double min_distance = std::min(distance(current_pose_.p, wall_estimates_[0].p_e), distance(current_pose_.p, wall_estimates_[1].p_e));
-                        if(min_distance - last_min_distance_ > 1e-3){
-                            ROS_INFO("CLEARED WALL %f %f", min_distance, last_min_distance_);
+                        // check if distance from robot to nearest wall endpoint starts to increase, then you have cleared the end of the wall
+                        if(min_distance - last_min_distance > 1e-3){
+                            ROS_INFO("CLEARED WALL %f %f", min_distance, last_min_distance);
                             stop();
                             current_state_ = States::INTERSECTION;
-                            pid_->reset(ros::Time::now().toSec());
-                            wd_->resetMedians();
-                            resetWallEstimates();
-                            stableDesiredHeading(); // clear the static variables
-                            stableDesiredPosition(current_pose_);
                         }
-                        last_min_distance_ = min_distance;
+                        last_min_distance = min_distance;
                     }
-                    last_wall_update_ = ros::Time::now();
                 }
 
-                if(center_range_ < 0.8 || left_range_ - last_left_range_ > 1.0 || right_range_ - last_right_range_ > 1.0){
+                // additional check for intersection state if either side laser detects a sudden increase in range
+                if(center_range_ < 0.8 || left_range_ - last_left_range > 1.0 || right_range_ - last_right_range > 1.0){
                     stop();
                     current_state_ = States::INTERSECTION;
-                    pid_->reset(ros::Time::now().toSec());
-                    wd_->resetMedians();
-                    resetWallEstimates();
-                    stableDesiredHeading(); // clear the static variables
-                    stableDesiredPosition(current_pose_);
                 }
-                last_left_range_ = left_range_;
-                last_right_range_ = right_range_;
-                /*if(left_range_ > 1.2 * corridor_max_wall_dist_ ||
-                   center_range_ < corridor_max_wall_dist_ ||
-                   right_range_ > 1.2 * corridor_max_wall_dist_){
-                    // TODO: use the ClearedWall() from wd_
-                    current_state_ = States::INTERSECTION;
-                    stop();
-                }*/
-            }
+                last_left_range = left_range_;
+                last_right_range = right_range_;
                 break;
+            }
 
             case States::INTERSECTION: {
                 if (last_state_ != current_state_) {
                     ROS_INFO("Entered Intersection state");
                     last_state_ = current_state_;
-                    last_min_distance_ = 1e3;
+                    pid_->reset(ros::Time::now().toSec());
+                    wd_->resetMedians();
+                    resetWallEstimates();
+                    stableDesiredHeading(); // reset the static variables
+                    stableDesiredPosition(current_pose_);
                 }
+                // drive forward a bit to clear walls
+                //rotateToNearestCompassPoint(current_pose_.h);
                 if(center_range_ > 1.0)
-                    driveStraight(0.5); // drive forward a bit to clear walls
-                 // TODO: control this drive straight to the last wall
+                    driveStraight(0.5);
                 ros::spinOnce();
-                //update_walls();
 
                 // check exits
                 std::vector<int> open_exits(3);
@@ -205,10 +190,14 @@ namespace turtlebot_maze {
                     angle_to_rotate = M_PI;
                 }
 
+                // align first with nearest compass point, to correct accumulating heading drift
+                rotateToNearestCompassPoint(current_pose_.h);
                 rotateAngle(angle_to_rotate);
-                // drive forward until in corridor
-                driveStraight(0.8);
-                updateWalls();
+
+                driveStraight(0.8); // drive forward until in corridor
+                getUpdatedWalls();
+
+                // TODO CHECK ALL LASERS
                 if(wall_estimates_[0].r < 1e-3 && wall_estimates_[1].r < 1e-3 && center_range_ > 5.0)
                     current_state_ = States::ESCAPED;
                 else
@@ -224,7 +213,7 @@ namespace turtlebot_maze {
             }
         }
     }
-
+    /*
     void TurtleBotMaze::followWall() {
         geometry_msgs::Twist move_cmd;
         move_cmd.linear.x = 0.2;
@@ -256,7 +245,6 @@ namespace turtlebot_maze {
                     wd_->resetMedians();
                     resetWallEstimates();
                 }
-                last_wall_update_ = ros::Time::now();
             }
             loop_rate_->sleep();
             if (center_range_ < 0.5) { //too close to wall in front
@@ -268,7 +256,7 @@ namespace turtlebot_maze {
                 pid_->reset(ros::Time::now().toSec());
             }
         }
-    }
+    }*/
 
     void TurtleBotMaze::stop() {
         geometry_msgs::Twist move_cmd;
@@ -277,12 +265,13 @@ namespace turtlebot_maze {
         vel_publisher_.publish(move_cmd);
     }
 
-    void TurtleBotMaze::driveStraight(double distance_in) {
+    void TurtleBotMaze::driveStraight(double distance) {
         geometry_msgs::Twist move_cmd;
-        move_cmd.linear.x = distance_in >= 0.0 ? 0.2 : -0.2;
+        move_cmd.linear.x = distance >= 0.0 ? 0.2 : -0.2;
         move_cmd.angular.z = 0.0;
         double distance_current = 0.0;
-        while (std::fabs(distance_current) < std::fabs(distance_in) && center_range_ > 0.5) {
+        // check for collision
+        while (std::fabs(distance_current) < std::fabs(distance) && center_range_ > 0.5) {
             ros::spinOnce();
             vel_publisher_.publish(move_cmd);
             loop_rate_->sleep();
@@ -290,21 +279,12 @@ namespace turtlebot_maze {
         }
     }
 
-    void TurtleBotMaze::rotateAngle(double angle_in) {
-        // align first with nearest compass point, to correct accumulating heading drift
-        double align_angle = angleToNearestCompassPoint();
+    void TurtleBotMaze::rotateAngle(double angle) {
         geometry_msgs::Twist move_cmd;
         move_cmd.linear.x = 0.0;
-        move_cmd.angular.z = align_angle >= 0.0 ? 0.5 : - 0.5;
+        move_cmd.angular.z = angle >= 0.0 ? 0.5 : -0.5;
         double angle_current = 0.0;
-        while (std::fabs(angle_current) < std::fabs(align_angle)) {
-            vel_publisher_.publish(move_cmd);
-            loop_rate_->sleep();
-            angle_current += move_cmd.angular.z * 0.1;
-        }
-        move_cmd.angular.z = angle_in >= 0.0 ? 0.5 : -0.5;
-        angle_current = 0.0;
-        while (std::fabs(angle_current) < std::fabs(angle_in)) {
+        while (std::fabs(angle_current) < std::fabs(angle)) {
             vel_publisher_.publish(move_cmd);
             loop_rate_->sleep();
             angle_current += move_cmd.angular.z * 0.1;
@@ -326,20 +306,39 @@ namespace turtlebot_maze {
         }
     }
 
-    double TurtleBotMaze::angleToNearestCompassPoint(){
-        auto dir = nearestCompassPoint(current_pose_.h);
+    void TurtleBotMaze::rotateToNearestCompassPoint(double heading){
+        auto dir = nearestCompassPoint(heading);
+        double align_angle = 0.0;
         switch(dir){
-            case Directions::POS_X:
-                return -current_pose_.h;
-            case Directions::NEG_X:{
-                if(current_pose_.h > 0.0)
-                    return M_PI - current_pose_.h;
-                return -M_PI - current_pose_.h;
+            case Directions::POS_X:{
+                align_angle = -heading;
+                break;
             }
-            case Directions::POS_Y:
-                return M_PI_2 - current_pose_.h;
-            case Directions::NEG_Y:
-                return -M_PI_2 - current_pose_.h;
+            case Directions::NEG_X:{
+                if(heading > 0.0)
+                    align_angle =  M_PI - heading;
+                else
+                    align_angle = -M_PI - heading;
+                break;
+            }
+            case Directions::POS_Y:{
+                align_angle = M_PI_2 - heading;
+                break;
+            }
+            case Directions::NEG_Y:{
+                align_angle = -M_PI_2 - heading;
+                break;
+            }
+        }
+
+        geometry_msgs::Twist move_cmd;
+        move_cmd.linear.x = 0.0;
+        move_cmd.angular.z = align_angle >= 0.0 ? 0.5 : - 0.5;
+        double angle_current = 0.0;
+        while (std::fabs(angle_current) < std::fabs(align_angle)) {
+            vel_publisher_.publish(move_cmd);
+            loop_rate_->sleep();
+            angle_current += move_cmd.angular.z * 0.1;
         }
     }
 
@@ -355,14 +354,12 @@ namespace turtlebot_maze {
         tf::Matrix3x3 m(q);
         double roll, pitch, yaw;
         m.getRPY(roll, pitch, yaw);
-
         current_pose_.p.x = msg.pose.pose.position.x;
         current_pose_.p.y = msg.pose.pose.position.y;
         current_pose_.h = yaw;
-        current_odom_ = msg;
     }
 
-    void TurtleBotMaze::updateWalls() {
+    void TurtleBotMaze::getUpdatedWalls() {
         if (current_scan_.header.seq == 0)
             return;
 
@@ -374,37 +371,18 @@ namespace turtlebot_maze {
             ranges[i] = current_scan_.ranges[i];
         }
 
-        wd_->updateWalls(current_pose_, ranges, angles);
-        ph_->addPoint(current_pose_.p);
-        //ph_->PrintPoints();
-
-
+        wd_->updateWalls(current_pose_, ranges, angles); // send latest scan data to wall_detector
+        ph_->addPoint(current_pose_.p); // add current position to history
+        wd_->getWalls(wall_estimates_[1], wall_estimates_[0]); // get best estimate wall models from wall_detector using a median calculation
 
         ROS_INFO("Pose: x %f y %f h %f", current_pose_.p.x, current_pose_.p.y, current_pose_.h);
-        /*int cc = 0;
-        for (const auto &w : wd_->GetWalls()) {
-            ROS_INFO("Walls: r %f a %f x0 %f y0 %f x1 %f y1 %f n %d", w.r, w.a, w.p_c.x, w.p_c.y, w.p_e.x, w.p_e.y, ++cc);
-        }*/
-        wd_->getWalls(wall_estimates_[1], wall_estimates_[0]);
-        ROS_INFO("RWall: r %f a %f x0 %f y0 %f x1 %f y1 %f", wall_estimates_[0].r, wall_estimates_[0].a, wall_estimates_[0].p_c.x, wall_estimates_[0].p_c.y,
+        ROS_INFO("RWall: r %f a %f xc %f yc %f xe %f ye %f", wall_estimates_[0].r, wall_estimates_[0].a, wall_estimates_[0].p_c.x, wall_estimates_[0].p_c.y,
                  wall_estimates_[0].p_e.x, wall_estimates_[0].p_e.y);
-        ROS_INFO("LWall: r %f a %f x0 %f y0 %f x1 %f y1 %f", wall_estimates_[1].r, wall_estimates_[1].a, wall_estimates_[1].p_c.x, wall_estimates_[1].p_c.y,
+        ROS_INFO("LWall: r %f a %f xc %f yc %f xe %f ye %f", wall_estimates_[1].r, wall_estimates_[1].a, wall_estimates_[1].p_c.x, wall_estimates_[1].p_c.y,
                  wall_estimates_[1].p_e.x, wall_estimates_[1].p_e.y);
-        //if(cc == 1) wall_detect_record_ << ",";
         std::cout << "-----------------------------------\n";
 
-        //write a scan to file
-        /*
-        static bool has_written = false;
-        if (!has_written && center_walls_[0].r <= 3.5){
-            std::ofstream ofs;
-            ofs.open("sampleScan.txt");
-            for (auto i = right_laser_idx_; i <= left_laser_idx_; ++i){
-                ofs << i * current_scan_.angle_increment << " " << current_scan_.ranges[i] << std::endl;
-            }
-            ofs.close();
-            has_written = true;
-        }*/
+        last_wall_update_ = ros::Time::now();
     }
 
     std::vector<int> TurtleBotMaze::checkUnvisitedExits(const std::vector<int> &open_exits){

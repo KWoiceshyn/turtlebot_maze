@@ -25,13 +25,13 @@ namespace turtlebot_maze {
 
         void stateMachine();
 
-        void followWall();
+        //void followWall();
 
         void stop();
 
-        void driveStraight(double distance_in);
+        void driveStraight(double distance);
 
-        void rotateAngle(double angle_in);
+        void rotateAngle(double angle);
 
         void sleep(){
             loop_rate_->sleep();
@@ -49,7 +49,9 @@ namespace turtlebot_maze {
         }
 
     private:
-        void updateWalls();
+
+        // get updated left and right wall models from the wall_detection object
+        void getUpdatedWalls();
 
         std::vector<int> checkUnvisitedExits(const std::vector<int>& open_exits);
 
@@ -60,8 +62,12 @@ namespace turtlebot_maze {
         // if it is not reliable, return the current heading of the robot so that the controller ignores heading error
         double stableDesiredHeading();
 
+        // depending on robot's heading, calculate the robot's error w.r.t the desired position perpendicular to the direction of travel
+        // this desired position is either the center-line of a corridor (when left and right walls are close)
+        // or a short distance from a wall if only one wall is present; returns zero if wall estimates are not reliable
         double stableDesiredPosition(const Pose& pose);
 
+        // clear out the local left and right wall estimates
         void resetWallEstimates();
 
         enum class Directions{
@@ -71,17 +77,17 @@ namespace turtlebot_maze {
             NEG_Y
         };
 
+        // find the nearest cardinal direction to the robot's current heading
         Directions nearestCompassPoint(double heading);
 
-        double angleToNearestCompassPoint();
+        // rotate to align with nearest cardinal direction
+        void rotateToNearestCompassPoint(double heading);
 
         void callbackLaser(const sensor_msgs::LaserScan &msg);
 
         void callbackPose(const nav_msgs::Odometry & msg);
 
-        double heading_error_;
-        double center_range_, left_range_, right_range_, last_left_range_, last_right_range_;
-        double last_min_distance_;
+        double center_range_, left_range_, right_range_;
 
         std::unique_ptr<WallDetection> wd_;
         std::unique_ptr<PositionHistory> ph_;
@@ -91,7 +97,7 @@ namespace turtlebot_maze {
         States current_state_;
         States last_state_;
 
-        std::vector<WallModel> wall_estimates_;
+        std::vector<WallModel> wall_estimates_; // local left and right wall model estimates while in a corridor
 
         ros::NodeHandle nh_;
         ros::Publisher vel_publisher_;
@@ -103,7 +109,6 @@ namespace turtlebot_maze {
 
         ros::ServiceClient teleporter_;
         sensor_msgs::LaserScan current_scan_;
-        nav_msgs::Odometry current_odom_;
 
         const size_t right_laser_idx_ {0};
         const size_t center_laser_idx_ {179};
