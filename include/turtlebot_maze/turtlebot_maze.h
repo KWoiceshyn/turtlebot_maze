@@ -25,7 +25,7 @@ namespace turtlebot_maze {
 
         void stateMachine();
 
-        //void followWall();
+        void followWall();
 
         void stop();
 
@@ -53,6 +53,8 @@ namespace turtlebot_maze {
         // get updated left and right wall models from the wall_detection object
         void getUpdatedWalls();
 
+        // in an intersection, check which of the 3 exit directions (left, center, right) are unvisited
+        // an unvisited direction must also be an open corridor
         std::vector<int> checkUnvisitedExits(const std::vector<int>& open_exits);
 
         // checks if both left wall and right wall endpoint estimates are consistent
@@ -112,10 +114,8 @@ namespace turtlebot_maze {
 
         const size_t right_laser_idx_ {0};
         const size_t center_laser_idx_ {179};
-        const size_t lf_laser_idx_ {320}; //20 deg forward from left laser
         const size_t left_laser_idx_ {359};
         const size_t hokuyo_num_ranges_ {360};
-        const double desired_ratio_ {cos(0.349)}; //20 deg
         const double corridor_max_wall_dist_ {1.0}; // max lateral distance to wall on either side to be in a corridor
     };
 

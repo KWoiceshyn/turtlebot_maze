@@ -82,7 +82,9 @@ namespace turtlebot_maze {
                 if(last_state_ != current_state_){
                     ROS_INFO("Entered Corridor state");
                     last_state_ = current_state_;
+                    pid_->reset(ros::Time::now().toSec());
                     getUpdatedWalls();
+                    last_wall_update_ = ros::Time::now();
                     last_left_range = left_range_;
                     last_right_range = right_range_;
                     last_min_distance = 1e3;
@@ -114,6 +116,7 @@ namespace turtlebot_maze {
                         }
                         last_min_distance = min_distance;
                     }
+                    last_wall_update_ = ros::Time::now();
                 }
 
                 // additional check for intersection state if either side laser detects a sudden increase in range
@@ -130,7 +133,6 @@ namespace turtlebot_maze {
                 if (last_state_ != current_state_) {
                     ROS_INFO("Entered Intersection state");
                     last_state_ = current_state_;
-                    pid_->reset(ros::Time::now().toSec());
                     wd_->resetMedians();
                     resetWallEstimates();
                     stableDesiredHeading(); // reset the static variables
@@ -152,22 +154,21 @@ namespace turtlebot_maze {
 
                 double angle_to_rotate = 0.0;
                 if (std::any_of(open_exits.begin(), open_exits.end(), [](int a) { return a != 0; })) {
-
                     std::vector<int> unvisited_exits = checkUnvisitedExits(open_exits);
                     ROS_INFO("Unvisited exits: L %d C %d R %d", unvisited_exits[0], unvisited_exits[1], unvisited_exits[2]);
                     if(std::none_of(unvisited_exits.begin(), unvisited_exits.end(), [](int a) { return a == 1; })){
-                        // if all are already visited, choose left, center, right based on openness
+                        // if all are already visited, choose left, then center, then right based on openness
                         if(open_exits[0] == 1){
                             angle_to_rotate = M_PI_2;
-                            ROS_INFO("Chose left already visited");
+                            ROS_INFO("Chose left but already visited");
                         }
                         else if(open_exits[1] == 1){
                             angle_to_rotate = 0;
-                            ROS_INFO("Chose center already visited");
+                            ROS_INFO("Chose center but already visited");
                         }
                         else if(open_exits[2] == 1){
                             angle_to_rotate = -M_PI_2;
-                            ROS_INFO("Chose right already visited");
+                            ROS_INFO("Chose right but already visited");
                         }
                     }else{
                         // choose center first, then left, then right
@@ -195,13 +196,19 @@ namespace turtlebot_maze {
                 rotateAngle(angle_to_rotate);
 
                 driveStraight(0.8); // drive forward until in corridor
-                getUpdatedWalls();
+                ros::spinOnce();
 
-                // TODO CHECK ALL LASERS
-                if(wall_estimates_[0].r < 1e-3 && wall_estimates_[1].r < 1e-3 && center_range_ > 5.0)
+                // check laser ranges to see if escaped
+                bool hit = false;
+                for(auto i = 0; i < hokuyo_num_ranges_; ++i){
+                    if(current_scan_.ranges[i] < 5.0){
+                        current_state_ = States::CORRIDOR;
+                        hit = true;
+                        break;
+                    }
+                }
+                if(!hit)
                     current_state_ = States::ESCAPED;
-                else
-                    current_state_ = States::CORRIDOR;
                 break;
             }
 
@@ -213,38 +220,35 @@ namespace turtlebot_maze {
             }
         }
     }
-    /*
+
     void TurtleBotMaze::followWall() {
+        static double last_min_distance = 1e3;
         geometry_msgs::Twist move_cmd;
         move_cmd.linear.x = 0.2;
-        //while(current_scan_.header.seq == 0)
-            //ros::spinOnce();
-        //update_walls();
-        //last_wall_update_ = ros::Time::now();
         while (ros::ok()) {
-            //move_cmd.angular.z = k_ * heading_error_; //simple P-controller
-            //heading_error_ = wall_estimates_[1].a - (current_pose_.h + M_PI_2);
-            move_cmd.angular.z = pid_->runControlHE(0.6 - left_range_, ros::Time::now().toSec(), heading_error_);
-            //ROS_INFO("LR: %f HE: %f", left_range_, heading_error_);
+            double heading_error = wall_estimates_[1].a - (current_pose_.h + M_PI_2);
+            move_cmd.angular.z = pid_->runControlHE(0.6 - left_range_, ros::Time::now().toSec(), heading_error);
             vel_publisher_.publish(move_cmd);
             ros::spinOnce();
             if(ros::Time::now().toSec() - last_wall_update_.toSec() > 1.0){
                 if (left_range_ < 1.2 && right_range_ < 1.2){
-                    updateWalls();
+                    getUpdatedWalls();
                     if (stableEndpointEstimate()){
                         ROS_INFO("STABLE ENDPOINT ESTIMATE");
                         double min_distance = std::min(distance(current_pose_.p, wall_estimates_[0].p_e), distance(current_pose_.p, wall_estimates_[1].p_e));
-                        if(min_distance - last_min_distance_ > 1e-3){
-                            ROS_INFO("CLEARED WALL %f %f", min_distance, last_min_distance_);
+                        if(min_distance - last_min_distance > 1e-3){
+                            ROS_INFO("CLEARED WALL %f %f", min_distance, last_min_distance);
                         }
-                        last_min_distance_ = min_distance;
+                        last_min_distance = min_distance;
                     }
 
+
                 }else{
-                    last_min_distance_ = 1e3;
+                    last_min_distance = 1e3;
                     wd_->resetMedians();
                     resetWallEstimates();
                 }
+                last_wall_update_ =ros::Time::now();
             }
             loop_rate_->sleep();
             if (center_range_ < 0.5) { //too close to wall in front
@@ -256,7 +260,7 @@ namespace turtlebot_maze {
                 pid_->reset(ros::Time::now().toSec());
             }
         }
-    }*/
+    }
 
     void TurtleBotMaze::stop() {
         geometry_msgs::Twist move_cmd;
@@ -366,7 +370,7 @@ namespace turtlebot_maze {
         std::vector<double> angles(hokuyo_num_ranges_, 0.0);
         std::vector<double> ranges(hokuyo_num_ranges_, 0.0);
 
-        for(int i = 0; i < hokuyo_num_ranges_; ++i){
+        for(auto i = 0; i < hokuyo_num_ranges_; ++i){
             angles[i] = i * current_scan_.angle_increment;
             ranges[i] = current_scan_.ranges[i];
         }
@@ -381,38 +385,33 @@ namespace turtlebot_maze {
         ROS_INFO("LWall: r %f a %f xc %f yc %f xe %f ye %f", wall_estimates_[1].r, wall_estimates_[1].a, wall_estimates_[1].p_c.x, wall_estimates_[1].p_c.y,
                  wall_estimates_[1].p_e.x, wall_estimates_[1].p_e.y);
         std::cout << "-----------------------------------\n";
-
-        last_wall_update_ = ros::Time::now();
     }
 
     std::vector<int> TurtleBotMaze::checkUnvisitedExits(const std::vector<int> &open_exits){
 
         std::vector<int> unvisited_exits(3, 0);
+        const double min_extent = 0.5, max_extent = 2.5;
 
         // check if open exits already visited
-        //ROS_INFO("Pose: x %f y %f h %f", current_pose_.p.x, current_pose_.p.y, current_pose_.h);
         if (open_exits[0]) {
-            Point ll = transformToGlobal({-1.0, 2.5}, current_pose_);
-            Point ur = transformToGlobal({1.0, 0.5}, current_pose_);
+            Point ll = transformToGlobal({-corridor_max_wall_dist_, max_extent}, current_pose_);
+            Point ur = transformToGlobal({corridor_max_wall_dist_, min_extent}, current_pose_);
             if (!ph_->anyInRectangle(ll, ur)) {
                 unvisited_exits[0] = 1;
-                //ROS_INFO("Left exit already visited");
             }
         }
         if (open_exits[1]) {
-            Point ll = transformToGlobal({0.5, 1.0}, current_pose_);
-            Point ur = transformToGlobal({2.5, -1.0}, current_pose_);
+            Point ll = transformToGlobal({min_extent, corridor_max_wall_dist_}, current_pose_);
+            Point ur = transformToGlobal({max_extent, -corridor_max_wall_dist_}, current_pose_);
             if (!ph_->anyInRectangle(ll, ur)) {
                 unvisited_exits[1] = 1;
-                //ROS_INFO("Center exit already visited");
             }
         }
         if (open_exits[2]) {
-            Point ll = transformToGlobal({-1.0, -0.5}, current_pose_);
-            Point ur = transformToGlobal({1.0, -2.5}, current_pose_);
+            Point ll = transformToGlobal({-corridor_max_wall_dist_, -min_extent}, current_pose_);
+            Point ur = transformToGlobal({corridor_max_wall_dist_, -max_extent}, current_pose_);
             if (!ph_->anyInRectangle(ll, ur)) {
                 unvisited_exits[2] = 1;
-                //ROS_INFO("Right exit already visited");
             }
         }
         return unvisited_exits;
