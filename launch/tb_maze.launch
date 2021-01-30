@@ -1,0 +1,4 @@
+<launch>
+  <node name="maze_solver" pkg="turtlebot_maze" type="turtlebot_maze_node" output="screen">
+  </node>
+</launch>
